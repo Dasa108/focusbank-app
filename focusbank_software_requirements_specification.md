@@ -278,8 +278,8 @@ CREATE TABLE usage_records (
 
 ### 8.1 Standalone APK Distribution
 - **Target File:** Universal Release APK (`focusbank-release.apk`)
-- **Signing:** Release keystore signed with V2, V3, and V4 signing schemes via Gradle.
-- **Minification:** R8 configured with keep rules for Room Entities and Compose runtime.
+- **Signing:** `signingConfigs.release` reads the upload keystore from the git-ignored `focusbank_android/keystore.properties` (template: `keystore.properties.example`) or from the `FOCUSBANK_KEYSTORE_FILE` / `FOCUSBANK_KEYSTORE_PASSWORD` / `FOCUSBANK_KEY_ALIAS` / `FOCUSBANK_KEY_PASSWORD` environment variables. Without them, release builds are unsigned and Gradle prints a warning. For Google Play this key is the *upload* key, and Play App Signing holds the app signing key. APKs are signed with scheme v2, which covers every version from minSdk 26 up.
+- **Minification:** *Not enabled yet* (`isMinifyEnabled = false`). Turning on R8 needs keep-rule verification and a device test first.
 
 ### 8.2 Testing & Validation Plan
 1. **Unit Testing** (`app/src/test`, `./gradlew testDebugUnitTest`): `TaskRulesTest` covers the pure rules. 69 tests in total. `FocusBankStoreTest` (Robolectric, in-memory Room) covers allowances, completion, charging, penalties, the screen-free goal, backup/restore and reset. `EnforcementEngineTest` drives the blocking engine through a fake phone. `PenaltyRecheckTest` covers FR-3.10 and alarm scheduling.
@@ -295,7 +295,7 @@ CREATE TABLE usage_records (
 - **Device status:** Debug APK installed and launched on a physical Android device during implementation.
 
 ### 8.4 Release Gates
-1. Configure and protect a private release keystore; do not commit it or its passwords.
+1. Create the upload keystore and fill in `keystore.properties` (the Gradle signing config exists as of 1.5.0). Keep the keystore and passwords backed up outside the repository, and never commit them.
 2. Sign the App Bundle and verify Play App Signing configuration.
 3. Complete the Accessibility API declaration (with a short video of the in-app disclosure and blocking), the foreground-service special-use justification, and the Data safety form. `QUERY_ALL_PACKAGES` is no longer requested.
 4. Add a privacy policy covering app monitoring, installed-app discovery, local usage records, and backup export.

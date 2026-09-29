@@ -2,9 +2,11 @@
 
 ## Build
 
-- Set a unique release keystore and keep it outside source control.
-- Configure `signingConfigs.release` with environment-provided keystore values.
-- Build the signed Android App Bundle with `./gradlew bundleRelease`.
+- Create the upload keystore (command in `keystore.properties.example`) and keep it, with a backup, outside the repository.
+- Copy `keystore.properties.example` to `keystore.properties` and fill it in (git-ignored), or set the `FOCUSBANK_*` environment variables.
+- [x] `signingConfigs.release` reads those values; without them the release build is unsigned and Gradle warns.
+- Build the signed Android App Bundle with `./gradlew bundleRelease` → `app/build/outputs/bundle/release/app-release.aab`.
+- On first upload, enrol in Play App Signing (this key becomes the upload key).
 - Test the signed build on a physical Android 8+ device and on Android 15/16 (edge-to-edge, targetSdk 36).
 
 ## Permissions and disclosures

@@ -1,7 +1,28 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.kapt")
+}
+
+// Release signing (Play upload key). Values come from focusbank_android/keystore.properties
+// (git-ignored; see keystore.properties.example) or, e.g. on CI, from environment variables.
+// Without them, release builds are produced unsigned and debug builds are unaffected.
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use(::load)
+}
+
+fun signingValue(property: String, environmentVariable: String): String? =
+    keystoreProperties.getProperty(property)?.takeIf { it.isNotBlank() }
+        ?: System.getenv(environmentVariable)?.takeIf { it.isNotBlank() }
+
+val releaseStoreFile = signingValue("storeFile", "FOCUSBANK_KEYSTORE_FILE")
+val hasReleaseSigning = releaseStoreFile != null
+
+if (!hasReleaseSigning && gradle.startParameter.taskNames.any { it.contains("Release") }) {
+    logger.warn("FocusBank: no release keystore configured; the release build will be UNSIGNED. See keystore.properties.example.")
 }
 
 android {
@@ -21,8 +42,20 @@ android {
         }
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = rootProject.file(releaseStoreFile!!)
+                storePassword = signingValue("storePassword", "FOCUSBANK_KEYSTORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "FOCUSBANK_KEY_ALIAS")
+                keyPassword = signingValue("keyPassword", "FOCUSBANK_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
