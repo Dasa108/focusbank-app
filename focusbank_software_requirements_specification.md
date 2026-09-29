@@ -4,12 +4,14 @@
 ---
 
 ### Document Control
-- **Document Version:** 1.2.0
+- **Document Version:** 1.3.0
 - **Author:** System Architecture & Product Engineering
 - **Status:** Release Candidate / Implementation Baseline
 - **Target OS:** Android (Minimum SDK: API 26 / Android 8.0 Oreo; Target SDK: API 34/35+)
 
 ### Document Update Summary
+
+Version 1.3.0 adds an optional daily screen-free goal (FR-5.6) that gates the FR-3.8 daily unlock. It also removes the unused `SYSTEM_ALERT_WINDOW` and `PACKAGE_USAGE_STATS` permissions, moves all database work off the main thread (Room no longer allows main-thread queries, and enforcement runs on its own thread), and adds JVM unit tests for the core rules in `TaskRules`.
 
 Version 1.2.0 comes from a spec-versus-code audit. Enforcement fixes: a switch between two protected apps no longer stops the allowance ticker; a penalty that starts while its app is open now locks it at once; penalty rechecks now happen when the paused countdown actually runs out (not on a wall-clock alarm), so they also survive a reboot; rerolls are only used up when a penalty would really apply. Rule changes: a late task completion earns no minutes (§1.3), a reset no longer grants a fresh daily allowance, and backup imports validate priority and value ranges. New in the UI: FR-1.2 sorting, priority-based default rewards, the 120-character title limit, reminder date and time with validation, a real JSON file export, a scrollable Vault, app names instead of package names, the overlay task spotlight, and a new launcher and notification icon. Section 9 lists what is still open.
 
@@ -104,12 +106,12 @@ FocusBank requires high-privilege Android permissions to enforce distraction blo
 | Permission Identifier | Usage Reason | Fallback / Graceful Failure |
 | :--- | :--- | :--- |
 | `BIND_ACCESSIBILITY_SERVICE` | Real-time interceptor when target package comes to foreground (`TYPE_WINDOW_STATE_CHANGED`). | Hard blocker: core app features cannot run without this active. |
-| `SYSTEM_ALERT_WINDOW` | *Declared but not requested or used.* Blocking always uses the fallback: `FLAG_ACTIVITY_NEW_TASK` launching `BlockOverlayActivity`. | Remove from the manifest before Play review, or implement a true overlay. |
-| `PACKAGE_USAGE_STATS` | *Declared but not used.* Foreground detection relies solely on the Accessibility Service. | Remove from the manifest, or implement Usage Access verification. |
 | `QUERY_ALL_PACKAGES` | Lists launchable installed apps for the protected-app selector (FR-4.1). | Requires a Play Console permission declaration (§8.4). |
 | `POST_NOTIFICATIONS` | Ongoing low-priority notification showing active countdown when distraction apps are in use. | Required on Android 13+ (API 33+) to guarantee foreground service stability. |
 | `FOREGROUND_SERVICE_SPECIAL_USE` | Keeps enforcement status visible while the Accessibility Service is connected. | Requires prominent disclosure and Play Console policy review. |
 | `RECEIVE_BOOT_COMPLETED` | Restores scheduled task deadline and reminder alarms after reboot or app update. | Tasks remain visible if alarms cannot be restored. |
+
+*Removed in 1.3.0:* `SYSTEM_ALERT_WINDOW` (blocking uses `BlockOverlayActivity` launched with `FLAG_ACTIVITY_NEW_TASK`) and `PACKAGE_USAGE_STATS` (foreground detection uses only the Accessibility Service). Neither was ever requested or used.
 
 ---
 
@@ -154,7 +156,7 @@ FocusBank requires high-privilege Android permissions to enforce distraction blo
 - **FR-3.5:** A penalty shall be stored as remaining seconds and shall pause while general allowance is zero.
 - **FR-3.6:** When a pending penalty is discovered at app launch, the UI shall animate a dice roll and end by showing the selected protected app and remaining penalty countdown.
 - **FR-3.7:** The Vault shall show the selected app and a live penalty countdown, including a paused state when general allowance is unavailable.
-- **FR-3.8:** When all stored tasks have been completed during the current day, protected-app enforcement shall be bypassed for the remainder of that day.
+- **FR-3.8:** When all stored tasks are complete, at least one was completed today, and the screen-free goal (FR-5.6) is met or not set, allowance enforcement shall be bypassed for the rest of that day. Penalties still apply.
 - **FR-3.9:** The dice reveal shall be shown once per unique penalty instance and shall not repeat on every app launch while that same penalty remains active.
 - **FR-3.10:** When a penalty's countdown reaches zero, the enforcement service shall recheck the associated task. Only if the task is still incomplete may another protected-app penalty be created or a reroll consumed. A reroll is never consumed when no penalty would apply (no protected apps, or zero penalty minutes).
 - **FR-3.11:** The lockout overlay shall identify the restricted package, show a live `HH:MM:SS` countdown, explain the lockout state, and provide a route back to FocusBank.
@@ -172,6 +174,7 @@ FocusBank requires high-privilege Android permissions to enforce distraction blo
 - **FR-5.2:** The Schedule screen shall show seven days as rows and eight three-hour windows as columns.
 - **FR-5.3:** Tasks shall appear in the matrix cell matching their deadline window, including exact due time.
 - **FR-5.4:** Schedule task text shall be color-coded by priority: high red, medium yellow, low green.
+- **FR-5.6 (Screen-free goal):** Users may set a daily goal of 0 to 960 minutes with the screen off; 0 turns the goal off. Screen-off time counts only after the day's first screen-on, so overnight sleep is excluded, and only while the enforcement service is running. The Vault shall show today's progress. The goal is included in backups.
 - **FR-5.5:** The Vault shall show current balance, minutes earned today (on-time completions only), protected-app minutes spent today, and per-app usage summaries labelled with app names. The Vault screen shall scroll so every section is reachable.
 
 ### 4.6 Module 6: Backup and Recovery
@@ -186,9 +189,9 @@ FocusBank requires high-privilege Android permissions to enforce distraction blo
 ## 5. Non-Functional Requirements
 
 - **NFR-1 (Latency):** The detection-to-block interception latency must not exceed $250\text{ ms}$ upon foreground package state change.
-- **NFR-2 (Battery Consumption):** Background service CPU footprint must not exceed $2\%$ of daily device battery consumption. Enforcement is driven by `AccessibilityEvent` callbacks plus one 1-second watchdog. The watchdog counts down penalties and recovers foreground events that some OEM builds drop, and it is skipped while the keyguard is locked. No other background polling is allowed. *Open:* the watchdog and the ticker build a new `FocusBankStore` and read Room on the main thread every second, which still needs profiling against this budget.
+- **NFR-2 (Battery Consumption):** Background service CPU footprint must not exceed $2\%$ of daily device battery consumption. Enforcement is driven by `AccessibilityEvent` callbacks plus one 1-second watchdog. The watchdog counts down penalties and recovers foreground events that some OEM builds drop, and it is skipped while the keyguard is locked. No other background polling is allowed. The service now keeps one long-lived `FocusBankStore` and does its work on a background thread. *Open:* battery profiling against this budget.
 - **NFR-3 (Offline Resiliency):** 100% of core logic must operate offline without remote server connectivity.
-- **NFR-4 (Data Integrity):** Tasks and usage records shall be persisted in Room with conflict-safe primary keys; allowance mutation and task completion require additional transaction hardening before production release.
+- **NFR-4 (Data Integrity):** Tasks and usage records shall be persisted in Room with conflict-safe primary keys. Room shall not run on the main thread: the UI uses coroutines on `Dispatchers.IO`, receivers use `goAsync()`, and the enforcement service uses its own `HandlerThread`. Balance, reroll and penalty read-modify-writes are serialized by one lock, and backup restore replaces all tasks in a single Room transaction.
 - **NFR-5 (Release Security):** Backup imports shall be validated before replacement; release encryption, biometric protection, and keystore-backed secrets remain required for a production security target.
 - **NFR-6 (Enforcement Availability):** Blocking and allowance consumption shall operate only while the user has enabled FocusBank in Android Accessibility settings and the service is actually bound. The UI shall distinguish enabled permission from a running service heartbeat.
 - **NFR-7 (Visible Time State):** The Vault shall refresh the exact second balance while visible and shall display it as hours, minutes, and seconds so consumption is observable during testing.
@@ -273,12 +276,12 @@ CREATE TABLE usage_records (
 - **Minification:** R8 configured with keep rules for Room Entities and Compose runtime.
 
 ### 8.2 Testing & Validation Plan
-1. **Unit Testing** *(no test sources exist yet)*: Coverage of `TimeBank` state transitions, penalty calculations, and ledger balance aggregation.
+1. **Unit Testing** (`app/src/test`, `./gradlew testDebugUnitTest`; the `TaskRules` rules are covered, while store and service tests are still to come): Coverage of `TimeBank` state transitions, penalty calculations, and ledger balance aggregation.
 2. **Instrumentation Tests:** Accessibility event firing, task-to-reward allocation integration tests.
 3. **Hardware Battery Testing:** Run benchmark on physical device for 24-hour cycle with 20+ app swaps to verify minimal power drain.
 
 ### 8.3 Current Release Candidate
-- **Version:** 1.2.0 (versionCode 3)
+- **Version:** 1.3.0 (versionCode 4)
 - **Debug APK:** `app/build/outputs/apk/debug/app-debug.apk`
 - **Unsigned Release APK:** `app/build/outputs/apk/release/app-release-unsigned.apk`
 - **Unsigned Release App Bundle:** `app/build/outputs/bundle/release/app-release.aab`
@@ -294,17 +297,17 @@ CREATE TABLE usage_records (
 
 ---
 
-## 9. Known Gaps & Open Issues (audit, v1.2.0)
+## 9. Known Gaps & Open Issues (updated for v1.3.0)
 
-These requirements or behaviours still differ from the intent above and are **not** fixed in 1.2.0:
+These requirements or behaviours still differ from the intent above:
 
-1. **FR-3.8 daily-unlock loophole.** Creating one trivial task and completing it immediately turns off all allowance enforcement for the rest of the day. The rule is implemented exactly as written, so the requirement itself needs a minimum (for example, at least N tasks, or total reward ≥ X minutes).
+1. **FR-3.8 daily unlock.** *Partly addressed in 1.3.0:* with a screen-free goal set, a trivial task no longer unlocks the day until the goal is met. With the goal at 0 (the default), the original loophole remains. Screen-off time is only recorded while the enforcement service runs, and the goal can be lowered at any time.
 2. **Self-granted rewards.** Reward minutes are user-editable (up to 1,440). A task created with a deadline more than 24 hours away and completed at once also earns a reroll (FR-1.4). There is no minimum task age or cooldown.
 3. **Deadline edits avoid penalties.** FR-1.1c lets an unexpired deadline be moved later without limit.
 4. **Restore and reset as escape hatches.** Importing an older backup restores its balance and does not clear active penalties. A reset clears penalties. Both are local-only and unauthenticated (see NFR-5).
 5. **FR-3.2 anti-circumvention** (Settings detection, strict mode) is not implemented.
 6. **Active tasks cannot be deleted.** Only completed tasks show a delete action, while §7.1 lists delete for all tasks. This may be intentional anti-cheat behaviour; the spec should say so.
 7. **Alarms are inexact.** Deadlines and the extra allowance use `setAndAllowWhileIdle`, which Doze can delay by several minutes. An extra allowance missed while the device was off is not granted later.
-8. **Main-thread database access.** Room is built with `allowMainThreadQueries()`, and the UI polls tasks and usage every second (NFR-2, NFR-4).
-9. **Unused permissions.** `SYSTEM_ALERT_WINDOW` and `PACKAGE_USAGE_STATS` are declared but unused (§3). The Vault health card shows Accessibility status only, not overlay status.
+8. ~~Main-thread database access~~ (fixed in 1.3.0). The UI still polls tasks and usage every second, now on `Dispatchers.IO`.
+9. ~~Unused permissions~~ (removed in 1.3.0). The §7.1 health indicator shows Accessibility status only; there is no overlay permission left to show.
 10. **Schedule matrix and DST.** Window boundaries are computed as midnight + n × 3 h, so on daylight-saving change days they shift by one hour.

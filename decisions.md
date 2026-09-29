@@ -32,4 +32,13 @@ Short architecture decision records. Newest last.
 
 ## ADR-008 — Process-wide usage cache (v1.2.0)
 **Context:** `usageCache` belonged to each `FocusBankStore` instance. The service creates a new store every tick, so the cache was always empty and every second did a Room read plus a write.
-**Decision:** The cache now lives in the store's companion object, so it survives across instances, and `resetAll()` clears it. The Room upsert still runs synchronously; moving it off the main thread is still open (SRS §9).
+**Decision:** The cache now lives in the store's companion object, so it survives across instances, and `resetAll()` clears it. The Room upsert still runs synchronously; ADR-009 moved it off the main thread.
+
+## ADR-009 — No Room on the main thread (v1.3.0)
+**Context:** `allowMainThreadQueries()` let the UI poll, the receivers, and the enforcement ticker all run database work on the main thread every second.
+**Decision:** Removed `allowMainThreadQueries()`. The UI uses coroutines on `Dispatchers.IO`, receivers use `goAsync()` through `runAsync {}`, and `AppMonitorService` confines all enforcement state to one `HandlerThread` and keeps a single store. Because the service and UI can now run at the same time, balance, reroll and penalty read-modify-writes hold a shared lock. Legacy task migration runs lazily from `tasks()`, so constructing a store never touches Room.
+
+## ADR-010 — Screen-free goal gates the daily unlock (v1.3.0)
+**Context:** Under FR-3.8, completing one trivial task unlocked the whole day.
+**Decision:** Add an optional daily screen-free goal (FR-5.6). The daily unlock also requires the goal to be met. Screen-off intervals come from the service's `SCREEN_OFF`/`SCREEN_ON` receiver and count only after the day's first screen-on, so a night's sleep does not satisfy the goal. The default is 0 (off), which keeps existing behaviour until the user opts in.
+**Trade-off:** Time is only counted while the service is running, and an interval that crosses midnight is credited only to the part after the new day's first wake.

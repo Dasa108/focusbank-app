@@ -2,7 +2,7 @@ package com.focusbank.app
 
 import android.accessibilityservice.AccessibilityService
 import android.os.Handler
-import android.os.Looper
+import android.os.HandlerThread
 import android.os.Build
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -21,8 +21,12 @@ import androidx.core.app.ServiceCompat
 import android.util.Log
 
 class AppMonitorService : AccessibilityService() {
-    private val handler = Handler(Looper.getMainLooper())
-    private val penaltyHandler = Handler(Looper.getMainLooper())
+    // All enforcement state below is confined to this one background thread: Room is not allowed on
+    // the main thread, and a single thread keeps activePackage/tickerRunning free of races.
+    private val worker = HandlerThread("FocusBankEnforcement").apply { start() }
+    private val handler = Handler(worker.looper)        // allowance ticker only (cleared on stop)
+    private val penaltyHandler = Handler(worker.looper) // watchdog, events, screen broadcasts
+    private val store by lazy { FocusBankStore(getSharedPreferences("focusbank", MODE_PRIVATE), this) }
     private var activePackage: String? = null
     private var tickerRunning = false
     private var notificationBalance = -1
@@ -33,9 +37,14 @@ class AppMonitorService : AccessibilityService() {
             when (intent?.action) {
                 Intent.ACTION_SCREEN_OFF -> {
                     Log.d("FocusBank", "Screen turned off; pausing allowance ticker")
+                    store.onScreenOff()
                     stopAllowanceTicker()
                 }
-                Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> {
+                Intent.ACTION_SCREEN_ON -> {
+                    store.onScreenOn()
+                    checkForegroundPackage()
+                }
+                Intent.ACTION_USER_PRESENT -> {
                     Log.d("FocusBank", "Screen turned on/unlocked; checking foreground app")
                     checkForegroundPackage()
                 }
@@ -75,7 +84,8 @@ class AppMonitorService : AccessibilityService() {
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_USER_PRESENT)
         }
-        registerReceiver(screenReceiver, filter)
+        // Delivered on the worker thread, alongside the ticker and watchdog.
+        registerReceiver(screenReceiver, filter, null, penaltyHandler)
 
         startPenaltyTicker()
         Log.i("FocusBank", "Accessibility enforcement connected")
@@ -92,7 +102,7 @@ class AppMonitorService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val packageName = event?.packageName?.toString() ?: return
-        handlePackageEvent(packageName)
+        penaltyHandler.post { handlePackageEvent(packageName) }
     }
 
     private fun handlePackageEvent(packageName: String) {
@@ -106,7 +116,6 @@ class AppMonitorService : AccessibilityService() {
             return
         }
 
-        val store = FocusBankStore(getSharedPreferences("focusbank", MODE_PRIVATE), this)
         val blockedApps = store.blockedApps()
 
         if (packageName !in blockedApps) {
@@ -163,7 +172,6 @@ class AppMonitorService : AccessibilityService() {
         if (pkg.contains("autofill")) return true
         if (pkg.contains("inputmethod") || pkg.contains("keyboard") || pkg.contains("ime")) return true
 
-        val store = FocusBankStore(getSharedPreferences("focusbank", MODE_PRIVATE), this)
         // If the user explicitly added an OEM app (like com.vivo.browser) to blocked apps, do not ignore it
         if (pkg !in store.blockedApps()) {
             if (pkg.startsWith("com.vivo.") || pkg.startsWith("com.bbk.") || pkg.startsWith("com.iqoo.")) return true
@@ -214,8 +222,8 @@ class AppMonitorService : AccessibilityService() {
     private fun startPenaltyTicker() {
         penaltyHandler.post(object : Runnable {
             override fun run() {
-                val store = FocusBankStore(getSharedPreferences("focusbank", MODE_PRIVATE), this@AppMonitorService)
                 storeHeartbeat()
+                store.ensureDailyAllowance() // one long-lived store now, so midnight rollover is explicit
                 store.penaltyConfiguredApps().forEach { packageName ->
                     if (store.consumePenaltySecond(packageName)) {
                         TaskDeadlineReceiver.onPenaltyExpired(this@AppMonitorService, store, packageName)
@@ -275,7 +283,6 @@ class AppMonitorService : AccessibilityService() {
                 // Secondary check: verify if active window changed without an event
                 val winPkg = getActiveForegroundPackage()
                 if (winPkg != null && !isIgnoredPackage(winPkg) && winPkg != currentPkg) {
-                    val store = FocusBankStore(getSharedPreferences("focusbank", MODE_PRIVATE), this@AppMonitorService)
                     if (winPkg in store.blockedApps()) {
                         // Switched straight from one protected app to another. Hand over to the full
                         // check (penalty + allowance). Calling startAllowanceTicker() here used to hit
@@ -291,7 +298,6 @@ class AppMonitorService : AccessibilityService() {
                     }
                 }
 
-                val store = FocusBankStore(getSharedPreferences("focusbank", MODE_PRIVATE), this@AppMonitorService)
                 if (currentPkg !in store.blockedApps()) {
                     activePackage = null
                     stopAllowanceTicker()
@@ -405,7 +411,7 @@ class AppMonitorService : AccessibilityService() {
             putExtra("is_penalty", isPenalty)
             putExtra(
                 "penalty_seconds",
-                FocusBankStore(getSharedPreferences("focusbank", MODE_PRIVATE), this@AppMonitorService).penaltyRemainingSeconds(target)
+                store.penaltyRemainingSeconds(target)
             )
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
@@ -413,13 +419,14 @@ class AppMonitorService : AccessibilityService() {
     }
 
     override fun onInterrupt() {
-        stopAllowanceTicker()
+        penaltyHandler.post { stopAllowanceTicker() }
     }
 
     override fun onDestroy() {
-        stopAllowanceTicker()
-        penaltyHandler.removeCallbacksAndMessages(null)
         runCatching { unregisterReceiver(screenReceiver) }
+        handler.removeCallbacksAndMessages(null)
+        penaltyHandler.removeCallbacksAndMessages(null)
+        worker.quitSafely()
         super.onDestroy()
     }
 }

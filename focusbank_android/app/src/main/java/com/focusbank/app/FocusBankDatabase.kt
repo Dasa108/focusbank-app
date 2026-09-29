@@ -9,6 +9,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.Transaction
 
 @Entity(tableName = "tasks")
 data class TaskEntity(
@@ -32,30 +33,40 @@ data class UsageEntity(
 )
 
 @Dao
-interface FocusBankDao {
+abstract class FocusBankDao {
     @Query("SELECT * FROM tasks ORDER BY completed ASC, deadlineMillis ASC")
-    fun allTasks(): List<TaskEntity>
+    abstract fun allTasks(): List<TaskEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun saveTask(task: TaskEntity)
+    abstract fun saveTask(task: TaskEntity)
 
     @Query("DELETE FROM tasks WHERE id = :id")
-    fun deleteTask(id: String)
+    abstract fun deleteTask(id: String)
 
     @Query("SELECT * FROM usage_records ORDER BY seconds DESC")
-    fun allUsage(): List<UsageEntity>
+    abstract fun allUsage(): List<UsageEntity>
 
     @Query("SELECT * FROM usage_records WHERE dayKey = :dayKey ORDER BY seconds DESC")
-    fun usageForDay(dayKey: String): List<UsageEntity>
+    abstract fun usageForDay(dayKey: String): List<UsageEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun saveUsage(usage: UsageEntity)
+    abstract fun saveUsage(usage: UsageEntity)
 
     @Query("DELETE FROM tasks")
-    fun clearTasks()
+    abstract fun clearTasks()
 
     @Query("DELETE FROM usage_records")
-    fun clearUsage()
+    abstract fun clearUsage()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract fun saveTasks(tasks: List<TaskEntity>)
+
+    /** Backup restore: all-or-nothing, so a failure cannot leave the task list half-replaced. */
+    @Transaction
+    open fun replaceTasks(tasks: List<TaskEntity>) {
+        clearTasks()
+        saveTasks(tasks)
+    }
 }
 
 @Database(entities = [TaskEntity::class, UsageEntity::class], version = 1, exportSchema = false)
@@ -70,7 +81,7 @@ abstract class FocusBankDatabase : RoomDatabase() {
                 context.applicationContext,
                 FocusBankDatabase::class.java,
                 "focusbank.db"
-            ).allowMainThreadQueries().build().also { instance = it }
+            ).build().also { instance = it }
         }
     }
 }

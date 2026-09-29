@@ -25,6 +25,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -55,13 +58,12 @@ class BlockOverlayActivity : ComponentActivity() {
                 var remaining by remember { mutableLongStateOf(initialPenalty) }
                 var balance by remember { mutableLongStateOf(store.balanceSeconds()) }
                 val label = remember { appLabel(this@BlockOverlayActivity, packageName) }
-                val tasks = remember { store.tasks() }
-                val penaltyTask = remember { tasks.firstOrNull { it.id == store.penaltyTask(packageName) } }
+                var tasks by remember { mutableStateOf<List<FocusTask>>(emptyList()) }
+                LaunchedEffect(Unit) { tasks = withContext(Dispatchers.IO) { store.tasks() } }
+                val penaltyTask = tasks.firstOrNull { it.id == store.penaltyTask(packageName) }
                 // Spec §7.1: spotlight the most important open task, soonest deadline first.
-                val spotlight = remember {
-                    tasks.filter { !it.completed && !store.isLate(it, System.currentTimeMillis()) }
-                        .minWithOrNull(compareBy({ FocusBankStore.PRIORITIES.indexOf(it.priority) }, { it.deadlineMillis }))
-                }
+                val spotlight = tasks.filter { !it.completed && !TaskRules.isLate(it, System.currentTimeMillis()) }
+                    .minWithOrNull(compareBy({ TaskRules.priorityRank(it.priority) }, { it.deadlineMillis }))
 
                 LaunchedEffect(Unit) {
                     while (true) {

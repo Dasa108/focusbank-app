@@ -15,6 +15,10 @@ class TaskDeadlineReceiver : BroadcastReceiver() {
         val taskId = intent?.getStringExtra("task_id") ?: return
         // Alarms scheduled by 1.1.0 for timed rechecks: expiry is now detected by AppMonitorService (FR-3.10).
         if (intent.getBooleanExtra("penalty_recheck", false)) return
+        runAsync { handle(context, intent, taskId) }
+    }
+
+    private fun handle(context: Context, intent: Intent, taskId: String) {
         val store = FocusBankStore(context.getSharedPreferences("focusbank", Context.MODE_PRIVATE), context)
         val task = store.tasks().firstOrNull { it.id == taskId } ?: return
         if (task.completed) return

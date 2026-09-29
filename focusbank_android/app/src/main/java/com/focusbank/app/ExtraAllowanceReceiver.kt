@@ -16,13 +16,7 @@ class ExtraAllowanceReceiver : BroadcastReceiver() {
         // A reset clears the schedule but not the alarm already queued with AlarmManager.
         if (preferences.getInt("extra_allowance_hour", -1) < 0) return
         val store = FocusBankStore(preferences, context)
-        val day = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
-        val key = "extra_allowance_granted_$day"
-        if (!context.getSharedPreferences("focusbank", Context.MODE_PRIVATE).getBoolean(key, false)) {
-            context.getSharedPreferences("focusbank", Context.MODE_PRIVATE).edit()
-                .putBoolean(key, true)
-                .putLong("balance_seconds", store.balanceSeconds() + 30L * 60L)
-                .apply()
+        if (store.grantExtraAllowance()) {
             val manager = context.getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(NotificationChannel("allowance", "Allowance", NotificationManager.IMPORTANCE_DEFAULT))
             manager.notify(1002, NotificationCompat.Builder(context, "allowance")

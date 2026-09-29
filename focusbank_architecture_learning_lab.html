@@ -74,7 +74,7 @@
       <div>
         <div class="flex flex-wrap items-center justify-center md:justify-start gap-2 mb-2">
           <span class="badge bg-blue-900/60 text-blue-300 border border-blue-700">FocusBank Case Study</span>
-          <span class="badge bg-lime-900/60 text-lime-300 border border-lime-700">v1.2.0</span>
+          <span class="badge bg-lime-900/60 text-lime-300 border border-lime-700">v1.3.0</span>
           <span class="badge bg-emerald-900/60 text-emerald-300 border border-emerald-700">Android 14 Verified</span>
           <span class="badge bg-purple-900/60 text-purple-300 border border-purple-700">Beginner Friendly</span>
         </div>
@@ -274,7 +274,7 @@
               <br><br>
               <strong class="text-emerald-400">The Fix (v1.2):</strong> An in-memory <code class="text-blue-300 font-mono">usageCache</code> keeps the running count so the per-second read is skipped. It lives in a <code class="text-blue-300 font-mono">companion object</code> because the service builds a new <code class="font-mono">FocusBankStore</code> every second; in 1.1 the cache belonged to each instance and was always empty.
               <br><br>
-              <strong class="text-red-400">Still open:</strong> the upsert itself is synchronous on the main thread (<code class="font-mono">allowMainThreadQueries()</code>).
+              <strong class="text-emerald-400">v1.3:</strong> <code class="font-mono">allowMainThreadQueries()</code> is gone. The UI reads Room on <code class="font-mono">Dispatchers.IO</code>, receivers use <code class="font-mono">goAsync()</code>, and the accessibility service works on its own <code class="font-mono">HandlerThread</code>. A lock keeps balance updates from racing between threads.
             </div>
           </div>
         </div>
@@ -709,14 +709,29 @@
             </tbody>
           </table>
         </div>
+        <h3 class="text-base font-bold text-white pt-2">Added in 1.3</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+          <div class="p-3.5 rounded-lg bg-gray-950 border border-lime-900/60 space-y-1.5">
+            <div class="font-bold text-lime-300">Screen-free goal (FR-5.6)</div>
+            <p class="text-gray-400">Set daily minutes with the screen off. The "all tasks done" unlock waits until you reach it. Time counts from your first unlock of the day, so sleep doesn't count.</p>
+          </div>
+          <div class="p-3.5 rounded-lg bg-gray-950 border border-gray-800 space-y-1.5">
+            <div class="font-bold text-blue-300">Threading (NFR-4)</div>
+            <p class="text-gray-400">No Room on the main thread. The service runs on one <code>HandlerThread</code>, and a lock guards balance updates.</p>
+          </div>
+          <div class="p-3.5 rounded-lg bg-gray-950 border border-gray-800 space-y-1.5">
+            <div class="font-bold text-emerald-300">Tests and permissions</div>
+            <p class="text-gray-400">19 JVM unit tests for <code>TaskRules</code>. Removed the unused <code>SYSTEM_ALERT_WINDOW</code> and <code>PACKAGE_USAGE_STATS</code>.</p>
+          </div>
+        </div>
         <h3 class="text-base font-bold text-white pt-2">Still open</h3>
         <ul class="text-xs text-gray-300 space-y-1.5 list-disc list-inside">
-          <li><strong class="text-red-300">FR-3.8 loophole:</strong> completing one trivial task turns off enforcement for the rest of the day. The requirement needs a minimum.</li>
+          <li><strong class="text-amber-300">FR-3.8 loophole:</strong> closed while a screen-free goal is set. With the default goal of 0, one trivial task still unlocks the day.</li>
           <li>Rewards are self-assigned, rerolls can be farmed with far-off deadlines, and deadlines can be pushed back indefinitely.</li>
           <li>Restore and reset can escape penalties. FR-3.2 anti-circumvention is not built.</li>
-          <li><code>SYSTEM_ALERT_WINDOW</code> and <code>PACKAGE_USAGE_STATS</code> are declared but unused. Room runs on the main thread. Alarms are inexact.</li>
+          <li>Alarms are inexact, and there are no store or service tests yet (only <code>TaskRules</code> is covered).</li>
         </ul>
-        <p class="text-xs text-gray-500">Full list: <code>focusbank_software_requirements_specification.md</code> §9 · Decisions: <code>decisions.md</code> ADR-004 to ADR-008.</p>
+        <p class="text-xs text-gray-500">Full list: <code>focusbank_software_requirements_specification.md</code> §9 · Decisions: <code>decisions.md</code> ADR-004 to ADR-010.</p>
       </div>
     </section>
   </main>
@@ -985,7 +1000,7 @@
           "The Android 14 kernel forcibly shuts down databases that execute updates more than once a minute."
         ],
         correct: 1,
-        explanation: "A cache only helps if it outlives the objects that use it. Because AppMonitorService builds a fresh FocusBankStore every second, the 1.1 per-instance cache never hit. Moving it to the companion object makes it process-wide. The upsert itself is still synchronous on the main thread, which remains an open item."
+        explanation: "A cache only helps if it outlives the objects that use it. Because AppMonitorService built a fresh FocusBankStore every second, the 1.1 per-instance cache never hit. Moving it to the companion object makes it process-wide. In v1.3 the service also keeps one store and runs on its own background thread."
       },
       {
         id: 5,

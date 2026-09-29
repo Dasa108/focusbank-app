@@ -59,7 +59,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import androidx.lifecycle.lifecycleScope
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
@@ -74,29 +80,36 @@ import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     private val importBackup = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let {
-            val restored = runCatching {
-                contentResolver.openInputStream(it)?.bufferedReader()?.use { reader ->
-                    val store = FocusBankStore(getSharedPreferences("focusbank", MODE_PRIVATE), this)
-                    store.restoreJson(reader.readText())
-                    TaskDeadlineReceiver.rescheduleAll(this, store.tasks())
-                } ?: error("Unable to read backup")
-            }.onFailure { error ->
-                Toast.makeText(this, "Backup not restored: ${error.message}", Toast.LENGTH_LONG).show()
-            }.isSuccess
-            if (restored) recreate()
+        uri ?: return@registerForActivityResult
+        lifecycleScope.launch {
+            val restored = withContext(Dispatchers.IO) {
+                runCatching {
+                    contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
+                        val store = FocusBankStore(getSharedPreferences("focusbank", MODE_PRIVATE), this@MainActivity)
+                        store.restoreJson(reader.readText())
+                        TaskDeadlineReceiver.rescheduleAll(this@MainActivity, store.tasks())
+                    } ?: error("Unable to read backup")
+                }
+            }
+            restored.onFailure { error ->
+                Toast.makeText(this@MainActivity, "Backup not restored: ${error.message}", Toast.LENGTH_LONG).show()
+            }
+            if (restored.isSuccess) recreate()
         }
     }
     // FR-6.1: write a real .json file so it can be picked again by the import flow.
     private val exportBackup = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        uri?.let {
-            runCatching {
-                val json = FocusBankStore(getSharedPreferences("focusbank", MODE_PRIVATE), this).backupJson()
-                contentResolver.openOutputStream(it)?.bufferedWriter()?.use { writer -> writer.write(json) } ?: error("Unable to write backup")
+        uri ?: return@registerForActivityResult
+        lifecycleScope.launch {
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    val json = FocusBankStore(getSharedPreferences("focusbank", MODE_PRIVATE), this@MainActivity).backupJson()
+                    contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer -> writer.write(json) } ?: error("Unable to write backup")
+                }
             }.onSuccess {
-                Toast.makeText(this, "Backup saved", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@MainActivity, "Backup saved", Toast.LENGTH_SHORT).show()
             }.onFailure { error ->
-                Toast.makeText(this, "Backup not saved: ${error.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(this@MainActivity, "Backup not saved: ${error.message}", Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -145,12 +158,19 @@ private fun FocusBankRoot(activity: MainActivity, onImportBackup: () -> Unit, on
 @Composable
 fun FocusBankApp(store: FocusBankStore, darkTheme: Boolean, onToggleTheme: () -> Unit, onImportBackup: () -> Unit, onExportBackup: () -> Unit) {
     var selectedTab by remember { mutableStateOf(0) }
-    var tasks by remember { mutableStateOf(store.tasks()) }
+    var tasks by remember { mutableStateOf<List<FocusTask>>(emptyList()) }
     var balance by remember { mutableStateOf(store.balanceSeconds()) }
     var blockedApps by remember { mutableStateOf(store.blockedApps()) }
     var appAllowances by remember { mutableStateOf(store.appAllowances()) }
     var appCategories by remember { mutableStateOf(store.appCategories()) }
-    var usageToday by remember { mutableStateOf(store.usageToday()) }
+    var usageToday by remember { mutableStateOf<List<UsageSummary>>(emptyList()) }
+    var awayGoalMinutes by remember { mutableStateOf(store.awayGoalMinutes()) }
+    var awaySeconds by remember { mutableStateOf(store.awaySecondsToday()) }
+    val scope = rememberCoroutineScope()
+    // Room is off-limits on the main thread: run a store call on IO, then apply its result on main.
+    fun <T> io(block: () -> T, then: (T) -> Unit = {}) {
+        scope.launch { then(withContext(Dispatchers.IO) { block() }) }
+    }
     var activePenalties by remember { mutableStateOf(store.activePenalties()) }
     var showPenaltyReveal by remember { mutableStateOf(false) }
     var revealedPenaltyPackage by remember { mutableStateOf<String?>(null) }
@@ -162,7 +182,7 @@ fun FocusBankApp(store: FocusBankStore, darkTheme: Boolean, onToggleTheme: () ->
     var accessibilityEnabled by remember { mutableStateOf(isEnforcementRunning(context)) }
 
     LaunchedEffect(context) {
-        installedApps = loadInstalledApps(context)
+        installedApps = withContext(Dispatchers.IO) { loadInstalledApps(context) }
         accessibilityEnabled = isEnforcementRunning(context)
         ExtraAllowanceReceiver.schedule(context)
     }
@@ -170,8 +190,10 @@ fun FocusBankApp(store: FocusBankStore, darkTheme: Boolean, onToggleTheme: () ->
     LaunchedEffect(store) {
         while (true) {
             balance = store.balanceSeconds()
-            tasks = store.tasks()
-            usageToday = store.usageToday()
+            val (freshTasks, freshUsage) = withContext(Dispatchers.IO) { store.tasks() to store.usageToday() }
+            tasks = freshTasks
+            usageToday = freshUsage
+            awaySeconds = store.awaySecondsToday()
             activePenalties = store.activePenalties()
             accessibilityEnabled = isEnforcementRunning(context)
             delay(1_000L)
@@ -241,7 +263,7 @@ fun FocusBankApp(store: FocusBankStore, darkTheme: Boolean, onToggleTheme: () ->
                 0 -> VaultScreen(
                     balance = balance,
                     pendingTasks = tasks.count { !it.completed },
-                    earnedToday = tasks.filter { it.completed && it.completedAt >= startOfToday() }.sumOf { store.earnedMinutes(it) },
+                    earnedToday = tasks.filter { it.completed && it.completedAt >= startOfToday() }.sumOf { TaskRules.earnedMinutes(it) },
                     usageToday = usageToday,
                     activePenalties = activePenalties,
                     extraAllowanceHour = store.extraAllowanceHour(),
@@ -252,7 +274,18 @@ fun FocusBankApp(store: FocusBankStore, darkTheme: Boolean, onToggleTheme: () ->
                     },
                     onExportBackup = onExportBackup,
                     onImportBackup = onImportBackup,
-                    onReset = { store.resetAll(); context.startActivity(Intent(context, MainActivity::class.java)); (context as? MainActivity)?.finish() },
+                    onReset = {
+                        io({ store.resetAll() }) {
+                            context.startActivity(Intent(context, MainActivity::class.java))
+                            (context as? MainActivity)?.finish()
+                        }
+                    },
+                    awayGoalMinutes = awayGoalMinutes,
+                    awaySecondsToday = awaySeconds,
+                    onSetAwayGoal = { minutes ->
+                        store.setAwayGoalMinutes(minutes)
+                        awayGoalMinutes = store.awayGoalMinutes()
+                    },
                     onOpenSettings = { selectedTab = 3 },
                     accessibilityEnabled = accessibilityEnabled,
                     onEnableAccessibility = {
@@ -272,26 +305,23 @@ fun FocusBankApp(store: FocusBankStore, darkTheme: Boolean, onToggleTheme: () ->
                             UUID.randomUUID().toString(), title, priority, reward, false,
                             deadlineMillis, penaltyMinutes, false, reminderMillis
                         )
-                        store.addTask(task)
                         TaskDeadlineReceiver.schedule(context, task)
-                        tasks = store.tasks()
+                        io({ store.addTask(task); store.tasks() }) { tasks = it }
                     },
                     onDelete = { task ->
                         TaskDeadlineReceiver.cancel(context, task.id)
-                        store.deleteTask(task.id)
-                        tasks = store.tasks()
+                        io({ store.deleteTask(task.id); store.tasks() }) { tasks = it }
                     },
                     onEdit = { task ->
-                        store.addTask(task)
                         TaskDeadlineReceiver.schedule(context, task)
-                        tasks = store.tasks()
+                        io({ store.addTask(task); store.tasks() }) { tasks = it }
                     },
                     onComplete = { task ->
                         TaskDeadlineReceiver.cancel(context, task.id)
-                        store.completeTask(task.id)
-                        tasks = store.tasks()
-                        balance = store.balanceSeconds()
-                        usageToday = store.usageToday()
+                        io({ store.completeTask(task.id); store.tasks() }) {
+                            tasks = it
+                            balance = store.balanceSeconds()
+                        }
                     }
                 )
                 2 -> ScheduleScreen(tasks)
@@ -339,9 +369,14 @@ private fun VaultScreen(
     onOpenSettings: () -> Unit,
     accessibilityEnabled: Boolean,
     onEnableAccessibility: () -> Unit,
-    onReduceAllowance: (Int) -> Unit
+    onReduceAllowance: (Int) -> Unit,
+    awayGoalMinutes: Int,
+    awaySecondsToday: Long,
+    onSetAwayGoal: (Int) -> Unit
 ) {
     var showReduceDialog by remember { mutableStateOf(false) }
+    var showAwayGoalDialog by remember { mutableStateOf(false) }
+    var awayGoalText by remember(awayGoalMinutes) { mutableStateOf(awayGoalMinutes.toString()) }
     var reductionAmount by remember { mutableStateOf("5") }
     var showResetDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -368,6 +403,30 @@ private fun VaultScreen(
                 }) { Text("Reduce") }
             },
             dismissButton = { TextButton(onClick = { showReduceDialog = false }) { Text("Cancel") } }
+        )
+    }
+    if (showAwayGoalDialog) {
+        AlertDialog(
+            onDismissRequest = { showAwayGoalDialog = false },
+            title = { Text("Daily screen-free goal") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Minutes your screen must be off each day, counted from your first unlock. Set 0 to turn the goal off.")
+                    OutlinedTextField(
+                        value = awayGoalText,
+                        onValueChange = { awayGoalText = it.filter(Char::isDigit).take(4) },
+                        label = { Text("Minutes away from the screen") },
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onSetAwayGoal(awayGoalText.toIntOrNull() ?: 0)
+                    showAwayGoalDialog = false
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { showAwayGoalDialog = false }) { Text("Cancel") } }
         )
     }
     if (showResetDialog) {
@@ -433,6 +492,34 @@ private fun VaultScreen(
                     val now = Calendar.getInstance()
                     TimePickerDialog(context, { _, hour, minute -> onSetExtraAllowance(hour, minute) }, now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE), false).show()
                 }) { Text("Extra 30 minutes: $extraTime") }
+            }
+        }
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val awayMinutes = awaySecondsToday / 60L
+                Text("Screen-free time", style = MaterialTheme.typography.titleMedium)
+                if (awayGoalMinutes > 0) {
+                    val met = awayMinutes >= awayGoalMinutes
+                    Text("$awayMinutes of $awayGoalMinutes min away from the screen today")
+                    LinearProgressIndicator(
+                        progress = { (awayMinutes.toFloat() / awayGoalMinutes).coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        if (met) "Goal reached. Finishing every task now unlocks the rest of the day."
+                        else "Finishing every task unlocks the rest of the day only after you reach this goal.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                } else {
+                    Text("$awayMinutes min away from the screen today")
+                    Text("No goal set: finishing every task unlocks the rest of the day straight away.", style = MaterialTheme.typography.bodySmall)
+                }
+                if (!accessibilityEnabled) {
+                    Text("Screen-off time is only counted while blocking protection is active.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
+                OutlinedButton(onClick = { showAwayGoalDialog = true }) {
+                    Text(if (awayGoalMinutes > 0) "Change goal" else "Set a goal")
+                }
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -546,7 +633,7 @@ private fun TaskScreen(
             title = { Text("Edit task") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(editTitle, { editTitle = it.take(FocusBankStore.MAX_TITLE_LENGTH) }, label = { Text("Title") }, singleLine = true)
+                    OutlinedTextField(editTitle, { editTitle = it.take(TaskRules.MAX_TITLE_LENGTH) }, label = { Text("Title") }, singleLine = true)
                     OutlinedTextField(editReward, { editReward = it.filter(Char::isDigit).take(4) }, label = { Text("Reward minutes") }, singleLine = true)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf("HIGH", "MEDIUM", "LOW").forEach { value ->
@@ -575,7 +662,7 @@ private fun TaskScreen(
             confirmButton = {
                 TextButton(onClick = {
                     if (editTitle.isNotBlank()) {
-                        val reward = (editReward.toIntOrNull() ?: task.rewardMinutes).coerceIn(0, FocusBankStore.MAX_TASK_MINUTES)
+                        val reward = (editReward.toIntOrNull() ?: task.rewardMinutes).coerceIn(0, TaskRules.MAX_TASK_MINUTES)
                         onEdit(task.copy(title = editTitle.trim(), priority = editPriority, rewardMinutes = reward, deadlineMillis = editDeadlineMillis))
                     }
                     editingTask = null
@@ -585,13 +672,13 @@ private fun TaskScreen(
         )
     }
     var reminderMillis by remember { mutableStateOf(System.currentTimeMillis() + 23L * 60L * 60L * 1000L) }
-    var sortMode by remember { mutableStateOf(TaskSort.DUE_DATE) }
+    var sortMode by remember { mutableStateOf(TaskRules.Sort.DUE_DATE) }
     // Keep the reminder ahead of the deadline whenever the deadline moves (FR-1.1b).
     fun updateDeadline(value: Long) {
         deadlineMillis = value
         reminderMillis = value - 60L * 60L * 1000L
     }
-    val activeTasks = sortTasks(tasks.filterNot { it.completed }, sortMode)
+    val activeTasks = TaskRules.sort(tasks.filterNot { it.completed }, sortMode, System.currentTimeMillis())
     val completedTasks = tasks.filter { it.completed }
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
@@ -617,9 +704,9 @@ private fun TaskScreen(
         }
         item {
             OutlinedTextField(
-                title, { title = it.take(FocusBankStore.MAX_TITLE_LENGTH) }, Modifier.fillMaxWidth(),
+                title, { title = it.take(TaskRules.MAX_TITLE_LENGTH) }, Modifier.fillMaxWidth(),
                 label = { Text("Task title") }, singleLine = true,
-                supportingText = { Text("${title.length} / ${FocusBankStore.MAX_TITLE_LENGTH}") }
+                supportingText = { Text("${title.length} / ${TaskRules.MAX_TITLE_LENGTH}") }
             )
         }
         item {
@@ -627,7 +714,7 @@ private fun TaskScreen(
                 listOf("HIGH", "MEDIUM", "LOW").forEach { value ->
                     FilterChip(selected = priority == value, onClick = {
                         priority = value
-                        reward = FocusBankStore.defaultReward(value).toString()
+                        reward = TaskRules.defaultReward(value).toString()
                     }, label = { Text(value) })
                 }
             }
@@ -690,9 +777,9 @@ private fun TaskScreen(
                         onAdd(
                             title.trim(),
                             priority,
-                            (reward.toIntOrNull() ?: FocusBankStore.defaultReward(priority)).coerceIn(0, FocusBankStore.MAX_TASK_MINUTES),
+                            (reward.toIntOrNull() ?: TaskRules.defaultReward(priority)).coerceIn(0, TaskRules.MAX_TASK_MINUTES),
                             deadlineMillis,
-                            (penaltyMinutes.toIntOrNull() ?: 60).coerceIn(0, FocusBankStore.MAX_TASK_MINUTES),
+                            (penaltyMinutes.toIntOrNull() ?: 60).coerceIn(0, TaskRules.MAX_TASK_MINUTES),
                             reminderMillis
                         )
                         title = ""
@@ -705,7 +792,7 @@ private fun TaskScreen(
             item {
                 Text("Active tasks", style = MaterialTheme.typography.titleMedium)
                 Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TaskSort.values().forEach { mode ->
+                    TaskRules.Sort.values().forEach { mode ->
                         FilterChip(selected = sortMode == mode, onClick = { sortMode = mode }, label = { Text(mode.label) })
                     }
                 }
@@ -717,8 +804,8 @@ private fun TaskScreen(
                     Column(Modifier.weight(1f)) {
                         Text(task.title, style = MaterialTheme.typography.titleMedium)
                         Text("${task.priority} • +${task.rewardMinutes} min • due ${dateFormat.format(task.deadlineMillis)} ${timeFormat.format(task.deadlineMillis)}")
-                        if (sortMode == TaskSort.EISENHOWER) {
-                            Text(eisenhowerQuadrant(task).label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary)
+                        if (sortMode == TaskRules.Sort.EISENHOWER) {
+                            Text(TaskRules.quadrant(task, System.currentTimeMillis()).label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary)
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -742,7 +829,7 @@ private fun TaskScreen(
                 Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                     Column(Modifier.weight(1f)) {
                         Text(task.title, style = MaterialTheme.typography.titleMedium)
-                        val late = task.deadlineMillis > 0L && task.completedAt > task.deadlineMillis
+                        val late = TaskRules.isLate(task)
                         Text(if (late) "${task.priority} • completed late, no reward" else "${task.priority} • +${task.rewardMinutes} min earned")
                     }
                     TextButton(onClick = { onDelete(task) }) { Text("Delete") }
@@ -750,35 +837,6 @@ private fun TaskScreen(
             }
         }
     }
-}
-
-private enum class TaskSort(val label: String) { DUE_DATE("Due date"), PRIORITY("Priority"), EISENHOWER("Eisenhower") }
-
-private enum class Quadrant(val label: String) {
-    DO("Do now: urgent + important"),
-    SCHEDULE("Schedule: important"),
-    DELEGATE("Delegate: urgent"),
-    DROP("Drop: neither")
-}
-
-// FR-1.2: priority stands in for importance, a deadline inside 24 hours for urgency.
-private fun eisenhowerQuadrant(task: FocusTask, now: Long = System.currentTimeMillis()): Quadrant {
-    val important = task.priority != "LOW"
-    val urgent = task.deadlineMillis > 0L && task.deadlineMillis - now <= 24L * 60L * 60L * 1000L
-    return when {
-        important && urgent -> Quadrant.DO
-        important -> Quadrant.SCHEDULE
-        urgent -> Quadrant.DELEGATE
-        else -> Quadrant.DROP
-    }
-}
-
-private fun priorityRank(priority: String): Int = FocusBankStore.PRIORITIES.indexOf(priority).let { if (it < 0) 3 else it }
-
-private fun sortTasks(tasks: List<FocusTask>, mode: TaskSort): List<FocusTask> = when (mode) {
-    TaskSort.DUE_DATE -> tasks.sortedBy { it.deadlineMillis }
-    TaskSort.PRIORITY -> tasks.sortedWith(compareBy({ priorityRank(it.priority) }, { it.deadlineMillis }))
-    TaskSort.EISENHOWER -> tasks.sortedWith(compareBy({ eisenhowerQuadrant(it).ordinal }, { it.deadlineMillis }))
 }
 
 @Composable
