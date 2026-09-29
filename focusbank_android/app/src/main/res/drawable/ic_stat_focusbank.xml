@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Status-bar version of the FocusBank mark (white only; the system tints it). -->
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:pathData="M2.00,12.00a10,10 0 1,0 20,0a10,10 0 1,0 -20,0Z" />
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:pathData="M12,6A6,6 0 1,1 6,12" />
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M9.6,12.2L11.2,13.8L14.4,10.3" />
+</vector>

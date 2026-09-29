@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">FocusBank</string>
+    <string name="accessibility_service_description">Monitors selected apps for FocusBank allowance enforcement</string>
+</resources>

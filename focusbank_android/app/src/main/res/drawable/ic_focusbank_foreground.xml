@@ -1,0 +1,49 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- FocusBank mark: a vault door (ring + bolts) whose time arc fills as work is checked off.
+         Everything stays inside the 66dp adaptive-icon safe zone (radius 33). -->
+    <path
+        android:fillColor="#132A4A"
+        android:strokeColor="#B9F27C"
+        android:strokeWidth="3.5"
+        android:pathData="M24.00,54.00a30,30 0 1,0 60,0a30,30 0 1,0 -60,0Z" />
+    <path
+        android:fillColor="#8CB9F27C"
+        android:pathData="M77.80,54.00a1.7,1.7 0 1,0 3.4,0a1.7,1.7 0 1,0 -3.4,0ZM70.33,72.03a1.7,1.7 0 1,0 3.4,0a1.7,1.7 0 1,0 -3.4,0ZM52.30,79.50a1.7,1.7 0 1,0 3.4,0a1.7,1.7 0 1,0 -3.4,0ZM34.27,72.03a1.7,1.7 0 1,0 3.4,0a1.7,1.7 0 1,0 -3.4,0ZM26.80,54.00a1.7,1.7 0 1,0 3.4,0a1.7,1.7 0 1,0 -3.4,0ZM34.27,35.97a1.7,1.7 0 1,0 3.4,0a1.7,1.7 0 1,0 -3.4,0ZM52.30,28.50a1.7,1.7 0 1,0 3.4,0a1.7,1.7 0 1,0 -3.4,0ZM70.33,35.97a1.7,1.7 0 1,0 3.4,0a1.7,1.7 0 1,0 -3.4,0Z" />
+    <path
+        android:strokeColor="#24406A"
+        android:strokeWidth="5.5"
+        android:pathData="M37.00,54.00a17,17 0 1,0 34,0a17,17 0 1,0 -34,0Z" />
+    <!-- Rotated so the sweep gradient starts at 12 o'clock and runs clockwise with the arc. -->
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:rotation="-90">
+        <path
+            android:strokeWidth="5.5"
+            android:strokeLineCap="round"
+            android:pathData="M71,54A17,17 0 1,1 54,37">
+            <aapt:attr name="android:strokeColor">
+                <gradient
+                    android:type="sweep"
+                    android:centerX="54"
+                    android:centerY="54">
+                    <item android:offset="0" android:color="#FF83D5D0" />
+                    <item android:offset="0.75" android:color="#FFFFB870" />
+                    <item android:offset="0.9" android:color="#FFFFB870" />
+                    <item android:offset="1" android:color="#FF83D5D0" />
+                </gradient>
+            </aapt:attr>
+        </path>
+    </group>
+    <path
+        android:strokeColor="#B9F27C"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M46.5,54.5L51.5,59.5L61.5,48.5" />
+</vector>

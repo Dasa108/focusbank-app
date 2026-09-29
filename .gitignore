@@ -1,0 +1,22 @@
+# Gradle / Android build output
+.gradle/
+**/build/
+local.properties
+*.apk
+*.aab
+captures/
+.externalNativeBuild/
+.cxx/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Signing material must never be committed (SRS §8.4)
+*.jks
+*.keystore
+keystore.properties
+
+# Empty scratch helpers
+scratch/
