@@ -466,8 +466,12 @@ private fun VaultScreen(
                         val minutes = (remaining % 3600L) / 60L
                         val seconds = remaining % 60L
                         Text("${appLabel(context, penalty.packageName)}: %02d:%02d:%02d remaining".format(hours, minutes, seconds))
-                        if (balance <= 0L) Text("Paused until general allowance is available.", style = MaterialTheme.typography.bodySmall)
                     }
+                    Text(
+                        if (balance <= 0L) "Paused: the Vault is empty. Penalties count down only while you spend Vault time in other apps."
+                        else "Counts down only while you spend Vault time in other apps. Idle time doesn't count.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
             }
         }

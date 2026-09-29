@@ -56,9 +56,10 @@ data class ActivePenalty(val packageName: String, val untilMillis: Long, val pen
  */
 class FocusBankStore(
     private val preferences: SharedPreferences,
-    context: android.content.Context
+    context: android.content.Context,
+    // Injectable so tests can hand in an in-memory database.
+    private val dao: FocusBankDao = FocusBankDatabase.get(context).dao()
 ) {
-    private val dao = FocusBankDatabase.get(context).dao()
 
     init {
         ensureDailyAllowance()
@@ -101,9 +102,18 @@ class FocusBankStore(
         }
     }
 
-    fun consumeSecond(packageName: String? = null) {
-        addBalance(-1L)
-        if (packageName != null) recordUsageSecond(packageName)
+    /**
+     * One second of use in a protected app that draws on the general Vault. Always recorded as
+     * usage; returns true only when a second was actually taken from a non-empty Vault.
+     */
+    fun chargeVaultSecond(packageName: String): Boolean {
+        val charged = synchronized(LOCK) {
+            val balance = balanceSeconds()
+            if (balance > 0L) preferences.edit().putLong("balance_seconds", balance - 1L).apply()
+            balance > 0L
+        }
+        recordUsageSecond(packageName)
+        return charged
     }
 
     fun reduceAllowance(minutes: Int) {
@@ -141,11 +151,20 @@ class FocusBankStore(
     fun penaltyTask(packageName: String): String = preferences.getString("penalty_task_$packageName", "").orEmpty()
     fun penaltyRollShown(penaltyId: Long): Boolean = preferences.getBoolean("penalty_roll_shown_$penaltyId", false)
     fun markPenaltyRollShown(penaltyId: Long) = preferences.edit().putBoolean("penalty_roll_shown_$penaltyId", true).apply()
-    /** Burns one penalty second. Returns true when this second finished the penalty. */
-    fun consumePenaltySecond(packageName: String): Boolean = synchronized(LOCK) {
-        val tick = TaskRules.penaltyTick(penaltyRemainingSeconds(packageName), balanceSeconds()) ?: return false
-        preferences.edit().putLong("penalty_remaining_$packageName", tick.remainingSeconds).apply()
-        tick.expired
+    /**
+     * FR-3.5: after one Vault second was spent in [spendingIn], every other penalized app loses
+     * one penalty second. Returns the packages whose penalty just finished.
+     */
+    fun tickPenaltiesWhileSpending(spendingIn: String): List<String> = synchronized(LOCK) {
+        val editor = preferences.edit()
+        val expired = penaltyConfiguredApps().filter { it != spendingIn }.mapNotNull { packageName ->
+            val tick = TaskRules.penaltyTick(penaltyRemainingSeconds(packageName), spentVaultSecond = true)
+                ?: return@mapNotNull null
+            editor.putLong("penalty_remaining_$packageName", tick.remainingSeconds)
+            packageName.takeIf { tick.expired }
+        }
+        editor.apply()
+        expired
     }
     fun activePenalties(): List<ActivePenalty> = blockedApps().mapNotNull { packageName ->
         penaltyRemainingSeconds(packageName).takeIf { it > 0L }?.let { ActivePenalty(packageName, System.currentTimeMillis() + it * 1000L, penaltyId(packageName)) }
@@ -384,6 +403,10 @@ class FocusBankStore(
         // Process-wide: the accessibility service creates a fresh store every second, so an
         // instance-level cache was always empty and every tick paid for a DB read.
         private val usageCache = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+        /** Tests swap databases between cases; the process-wide cache must not leak across them. */
+        @androidx.annotation.VisibleForTesting
+        internal fun clearUsageCacheForTests() = usageCache.clear()
     }
 
     private fun toEntity(task: FocusTask) = TaskEntity(task.id, task.title, task.priority, task.rewardMinutes, task.completed, task.deadlineMillis, task.penaltyMinutes, task.penaltyProcessed, task.reminderMillis, task.completedAt)

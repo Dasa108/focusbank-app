@@ -57,17 +57,17 @@ class TaskRulesTest {
 
     // --- Penalty countdown (FR-3.5, FR-3.10) ---
 
-    @Test fun penaltyPausesWhileVaultIsEmpty() {
-        assertNull(TaskRules.penaltyTick(remainingSeconds = 30, balanceSeconds = 0))
+    @Test fun penaltyWaitsUnlessVaultTimeIsBeingSpent() {
+        assertNull(TaskRules.penaltyTick(remainingSeconds = 30, spentVaultSecond = false))
     }
 
-    @Test fun penaltyCountsDownWhileVaultHasTime() {
-        assertEquals(TaskRules.PenaltyTick(29, expired = false), TaskRules.penaltyTick(30, balanceSeconds = 5))
+    @Test fun penaltyCountsDownWhileVaultTimeIsSpent() {
+        assertEquals(TaskRules.PenaltyTick(29, expired = false), TaskRules.penaltyTick(30, spentVaultSecond = true))
     }
 
     @Test fun lastPenaltySecondReportsExpiryExactlyOnce() {
-        assertEquals(TaskRules.PenaltyTick(0, expired = true), TaskRules.penaltyTick(1, balanceSeconds = 5))
-        assertNull(TaskRules.penaltyTick(0, balanceSeconds = 5))
+        assertEquals(TaskRules.PenaltyTick(0, expired = true), TaskRules.penaltyTick(1, spentVaultSecond = true))
+        assertNull(TaskRules.penaltyTick(0, spentVaultSecond = true))
     }
 
     // --- Screen-free goal ---

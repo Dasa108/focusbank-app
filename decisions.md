@@ -42,3 +42,12 @@ Short architecture decision records. Newest last.
 **Context:** Under FR-3.8, completing one trivial task unlocked the whole day.
 **Decision:** Add an optional daily screen-free goal (FR-5.6). The daily unlock also requires the goal to be met. Screen-off intervals come from the service's `SCREEN_OFF`/`SCREEN_ON` receiver and count only after the day's first screen-on, so a night's sleep does not satisfy the goal. The default is 0 (off), which keeps existing behaviour until the user opts in.
 **Trade-off:** Time is only counted while the service is running, and an interval that crosses midnight is credited only to the part after the new day's first wake.
+
+## ADR-011 — Penalties are served only by spending Vault time (v1.4.0)
+**Context:** A penalty used to count down in real time whenever the Vault had any balance, so it could run out while the phone sat idle and cost the user nothing.
+**Decision:** A penalty second passes only when a general Vault second is actually spent in a different protected app (`chargeVaultSecond()` returns true, then `tickPenaltiesWhileSpending()`). The penalized app stays locked throughout. Time from an app's own allowance and free use under the daily unlock do not count, because neither costs Vault time.
+**Consequence:** A user who never spends Vault time elsewhere keeps the penalty indefinitely; that is the intent.
+
+## ADR-012 — Blocking rules in a testable EnforcementEngine (v1.4.0)
+**Context:** The rules were spread across two `Handler` loops inside the accessibility service, mixed with framework calls, and could not be unit-tested. The 1.2 dead-ticker bug came from the two loops disagreeing.
+**Decision:** `EnforcementEngine` holds all decisions and state and is driven by one `tick()` per second plus window and screen events. `AppMonitorService` implements `EnforcementHost` (foreground candidates, keyguard, IME list, launcher check, block, status) and runs the tick on its `HandlerThread`. Tests use a fake host with Robolectric for the store. Opening FocusBank itself now ends tracking of the previous app.

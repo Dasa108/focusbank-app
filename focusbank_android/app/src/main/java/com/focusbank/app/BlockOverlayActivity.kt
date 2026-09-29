@@ -84,7 +84,12 @@ class BlockOverlayActivity : ComponentActivity() {
                         Column(Modifier.padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             if (isPenalty && remaining > 0L) {
                                 Text(formatCountdown(remaining), style = MaterialTheme.typography.displaySmall)
-                                Text(if (balance <= 0L) "Paused until vault allowance is available" else "Time remaining in penalty", style = MaterialTheme.typography.bodyMedium)
+                                Text("Penalty time left", style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    if (balance <= 0L) "Paused until you have Vault time to spend in other apps"
+                                    else "Counts down only while you use Vault time in other apps",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
                             } else if (isPenalty) {
                                 Text("Penalty complete", style = MaterialTheme.typography.displaySmall)
                                 Text("Return to FocusBank to check tasks", style = MaterialTheme.typography.bodyMedium)

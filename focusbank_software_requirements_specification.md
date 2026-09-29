@@ -4,12 +4,14 @@
 ---
 
 ### Document Control
-- **Document Version:** 1.3.0
+- **Document Version:** 1.4.0
 - **Author:** System Architecture & Product Engineering
 - **Status:** Release Candidate / Implementation Baseline
 - **Target OS:** Android (Minimum SDK: API 26 / Android 8.0 Oreo; Target SDK: API 34/35+)
 
 ### Document Update Summary
+
+Version 1.4.0 changes how penalties are served. A penalty now counts down only while the user is spending general Vault time in another protected app. Idle time, a locked screen, an empty Vault, time from an app's own allowance, and free use under the daily unlock all leave it untouched. The penalized app stays locked throughout. The blocking rules moved out of `AppMonitorService` into a plain `EnforcementEngine` driven by one 1-second tick, and opening FocusBank itself now stops charging the app that was open before. The store, engine and penalty recheck are covered by Robolectric tests, for 66 tests in all.
 
 Version 1.3.0 adds an optional daily screen-free goal (FR-5.6) that gates the FR-3.8 daily unlock. It also removes the unused `SYSTEM_ALERT_WINDOW` and `PACKAGE_USAGE_STATS` permissions, moves all database work off the main thread (Room no longer allows main-thread queries, and enforcement runs on its own thread), and adds JVM unit tests for the core rules in `TaskRules`.
 
@@ -153,9 +155,9 @@ FocusBank requires high-privilege Android permissions to enforce distraction blo
   - Optional "Strict Lockdown Mode" prompts for confirmation password or prevents uninstalling during an active penalty.
 - **FR-3.3:** A missed task deadline shall randomly select one package from the current protected-app set only. It shall never select an unselected installed app.
 - **FR-3.4:** A penalty shall lock the selected protected app until its stored remaining penalty seconds reach zero (see FR-3.5; no wall-clock expiry timestamp is stored). A penalty that starts while its app is open locks it on the next tick.
-- **FR-3.5:** A penalty shall be stored as remaining seconds and shall pause while general allowance is zero.
+- **FR-3.5:** A penalty shall be stored as remaining seconds. It shall count down one second for each second of general Vault time the user actually spends in a *different* protected app. It shall not count down while the phone is idle, the screen is off or locked, the Vault is empty, time comes from an app's own allowance (FR-4.6), or use is free under the daily unlock (FR-3.8). The penalized app stays locked the whole time. Example: with 60 minutes in the Vault and a 20-minute penalty on Instagram, spending 20 minutes in YouTube serves the penalty and leaves 40 minutes in the Vault.
 - **FR-3.6:** When a pending penalty is discovered at app launch, the UI shall animate a dice roll and end by showing the selected protected app and remaining penalty countdown.
-- **FR-3.7:** The Vault shall show the selected app and a live penalty countdown, including a paused state when general allowance is unavailable.
+- **FR-3.7:** The Vault shall show the selected app and its remaining penalty time, and shall explain that it counts down only while Vault time is spent in other apps (shown as paused when the Vault is empty).
 - **FR-3.8:** When all stored tasks are complete, at least one was completed today, and the screen-free goal (FR-5.6) is met or not set, allowance enforcement shall be bypassed for the rest of that day. Penalties still apply.
 - **FR-3.9:** The dice reveal shall be shown once per unique penalty instance and shall not repeat on every app launch while that same penalty remains active.
 - **FR-3.10:** When a penalty's countdown reaches zero, the enforcement service shall recheck the associated task. Only if the task is still incomplete may another protected-app penalty be created or a reroll consumed. A reroll is never consumed when no penalty would apply (no protected apps, or zero penalty minutes).
@@ -189,7 +191,7 @@ FocusBank requires high-privilege Android permissions to enforce distraction blo
 ## 5. Non-Functional Requirements
 
 - **NFR-1 (Latency):** The detection-to-block interception latency must not exceed $250\text{ ms}$ upon foreground package state change.
-- **NFR-2 (Battery Consumption):** Background service CPU footprint must not exceed $2\%$ of daily device battery consumption. Enforcement is driven by `AccessibilityEvent` callbacks plus one 1-second watchdog. The watchdog counts down penalties and recovers foreground events that some OEM builds drop, and it is skipped while the keyguard is locked. No other background polling is allowed. The service now keeps one long-lived `FocusBankStore` and does its work on a background thread. *Open:* battery profiling against this budget.
+- **NFR-2 (Battery Consumption):** Background service CPU footprint must not exceed $2\%$ of daily device battery consumption. Enforcement is driven by `AccessibilityEvent` callbacks plus one 1-second tick in `EnforcementEngine`. The tick re-reads the foreground app (recovering events that some OEM builds drop), charges the tracked app, and counts down penalties, and it does nothing while the screen is off or locked. No other background polling is allowed. The service keeps one long-lived `FocusBankStore` and does its work on a background thread. *Open:* battery profiling against this budget.
 - **NFR-3 (Offline Resiliency):** 100% of core logic must operate offline without remote server connectivity.
 - **NFR-4 (Data Integrity):** Tasks and usage records shall be persisted in Room with conflict-safe primary keys. Room shall not run on the main thread: the UI uses coroutines on `Dispatchers.IO`, receivers use `goAsync()`, and the enforcement service uses its own `HandlerThread`. Balance, reroll and penalty read-modify-writes are serialized by one lock, and backup restore replaces all tasks in a single Room transaction.
 - **NFR-5 (Release Security):** Backup imports shall be validated before replacement; release encryption, biometric protection, and keystore-backed secrets remain required for a production security target.
@@ -276,12 +278,12 @@ CREATE TABLE usage_records (
 - **Minification:** R8 configured with keep rules for Room Entities and Compose runtime.
 
 ### 8.2 Testing & Validation Plan
-1. **Unit Testing** (`app/src/test`, `./gradlew testDebugUnitTest`; the `TaskRules` rules are covered, while store and service tests are still to come): Coverage of `TimeBank` state transitions, penalty calculations, and ledger balance aggregation.
+1. **Unit Testing** (`app/src/test`, `./gradlew testDebugUnitTest`, 66 tests): `TaskRulesTest` covers the pure rules. `FocusBankStoreTest` (Robolectric, in-memory Room) covers allowances, completion, charging, penalties, the screen-free goal, backup/restore and reset. `EnforcementEngineTest` drives the blocking engine through a fake phone. `PenaltyRecheckTest` covers FR-3.10 and alarm scheduling.
 2. **Instrumentation Tests:** Accessibility event firing, task-to-reward allocation integration tests.
 3. **Hardware Battery Testing:** Run benchmark on physical device for 24-hour cycle with 20+ app swaps to verify minimal power drain.
 
 ### 8.3 Current Release Candidate
-- **Version:** 1.3.0 (versionCode 4)
+- **Version:** 1.4.0 (versionCode 5)
 - **Debug APK:** `app/build/outputs/apk/debug/app-debug.apk`
 - **Unsigned Release APK:** `app/build/outputs/apk/release/app-release-unsigned.apk`
 - **Unsigned Release App Bundle:** `app/build/outputs/bundle/release/app-release.aab`
