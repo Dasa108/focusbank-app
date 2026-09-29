@@ -94,19 +94,31 @@ class FocusBankStoreTest {
         assertEquals(3L, store.usageToday().single { it.packageName == "com.chrome" }.seconds)
     }
 
-    @Test fun spendingInOneAppShortensPenaltiesOnOtherAppsOnly() {
+    @Test fun penaltiesCountDownWhileTheVaultHasTimeAndDoNotCostVaultTime() {
         store.addBlockedApp("com.insta"); store.addBlockedApp("com.chrome")
         store.setPenalty("com.insta", 1, "t1")
         store.setPenalty("com.chrome", 1, "t2")
-        store.tickPenaltiesWhileSpending(spendingIn = "com.chrome")
+        store.tickPenalties()
         assertEquals(59L, store.penaltyRemainingSeconds("com.insta"))
-        assertEquals(60L, store.penaltyRemainingSeconds("com.chrome"))
+        assertEquals(59L, store.penaltyRemainingSeconds("com.chrome"))
+        assertEquals(30 * 60L, store.balanceSeconds())
+    }
+
+    @Test fun penaltiesPauseWhileTheVaultIsEmpty() {
+        store.addBlockedApp("com.insta")
+        store.setPenalty("com.insta", 1, "t1")
+        fx.setBalance(0)
+        repeat(10) { store.tickPenalties() }
+        assertEquals(60L, store.penaltyRemainingSeconds("com.insta"))
+        fx.setBalance(1)
+        store.tickPenalties()
+        assertEquals(59L, store.penaltyRemainingSeconds("com.insta"))
     }
 
     @Test fun penaltyExpiryIsReportedOnTheLastSecondOnly() {
         store.addBlockedApp("com.insta")
         store.setPenalty("com.insta", 1, "t1")
-        val expiries = (1..61).map { store.tickPenaltiesWhileSpending("com.chrome") }
+        val expiries = (1..61).map { store.tickPenalties() }
         assertEquals(listOf("com.insta"), expiries[59])
         assertEquals(1, expiries.count { it.isNotEmpty() })
         assertEquals(0L, store.penaltyRemainingSeconds("com.insta"))

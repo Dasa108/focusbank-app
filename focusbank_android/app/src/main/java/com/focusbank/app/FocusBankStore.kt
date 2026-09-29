@@ -152,13 +152,14 @@ class FocusBankStore(
     fun penaltyRollShown(penaltyId: Long): Boolean = preferences.getBoolean("penalty_roll_shown_$penaltyId", false)
     fun markPenaltyRollShown(penaltyId: Long) = preferences.edit().putBoolean("penalty_roll_shown_$penaltyId", true).apply()
     /**
-     * FR-3.5: after one Vault second was spent in [spendingIn], every other penalized app loses
-     * one penalty second. Returns the packages whose penalty just finished.
+     * FR-3.5: one real second for every active penalty, but only while the Vault has more than 0
+     * seconds. Returns the packages whose penalty just finished.
      */
-    fun tickPenaltiesWhileSpending(spendingIn: String): List<String> = synchronized(LOCK) {
+    fun tickPenalties(): List<String> = synchronized(LOCK) {
+        val balance = balanceSeconds()
         val editor = preferences.edit()
-        val expired = penaltyConfiguredApps().filter { it != spendingIn }.mapNotNull { packageName ->
-            val tick = TaskRules.penaltyTick(penaltyRemainingSeconds(packageName), spentVaultSecond = true)
+        val expired = penaltyConfiguredApps().mapNotNull { packageName ->
+            val tick = TaskRules.penaltyTick(penaltyRemainingSeconds(packageName), balance)
                 ?: return@mapNotNull null
             editor.putLong("penalty_remaining_$packageName", tick.remainingSeconds)
             packageName.takeIf { tick.expired }

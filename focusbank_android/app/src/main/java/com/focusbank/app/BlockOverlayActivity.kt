@@ -86,8 +86,8 @@ class BlockOverlayActivity : ComponentActivity() {
                                 Text(formatCountdown(remaining), style = MaterialTheme.typography.displaySmall)
                                 Text("Penalty time left", style = MaterialTheme.typography.bodyMedium)
                                 Text(
-                                    if (balance <= 0L) "Paused until you have Vault time to spend in other apps"
-                                    else "Counts down only while you use Vault time in other apps",
+                                    if (balance <= 0L) "Paused until the Vault has time"
+                                    else "Counts down while the Vault has time",
                                     style = MaterialTheme.typography.bodySmall
                                 )
                             } else if (isPenalty) {

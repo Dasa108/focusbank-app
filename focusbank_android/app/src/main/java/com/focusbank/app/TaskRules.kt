@@ -27,13 +27,12 @@ object TaskRules {
         task.deadlineMillis > 0L && task.deadlineMillis - completedAt >= DAY_MILLIS
 
     /**
-     * One second of a penalty (FR-3.5). A penalty only counts down while the user is actually
-     * spending Vault time in another protected app ([spentVaultSecond]); idle time, a locked
-     * screen, or an empty Vault leave it untouched. Returns null when nothing changes.
+     * One second of a penalty (FR-3.5). A penalty counts down in real time while the Vault holds
+     * more than 0 seconds and pauses while it is empty. Returns null when nothing changes.
      * [PenaltyTick.expired] marks the final second.
      */
-    fun penaltyTick(remainingSeconds: Long, spentVaultSecond: Boolean): PenaltyTick? {
-        if (!spentVaultSecond || remainingSeconds <= 0L) return null
+    fun penaltyTick(remainingSeconds: Long, balanceSeconds: Long): PenaltyTick? {
+        if (balanceSeconds <= 0L || remainingSeconds <= 0L) return null
         return PenaltyTick(remainingSeconds - 1L, expired = remainingSeconds == 1L)
     }
 

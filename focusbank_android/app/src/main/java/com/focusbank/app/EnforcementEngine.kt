@@ -59,6 +59,8 @@ class EnforcementEngine(private val store: FocusBankStore, private val host: Enf
 
     fun tick() {
         store.ensureDailyAllowance()
+        // FR-3.5: penalties run on real time whenever the Vault has time, screen on or off.
+        store.tickPenalties().forEach(host::onPenaltyExpired)
         if (!screenOn || host.isKeyguardLocked()) return
         checkForeground()
         val packageName = activePackage ?: return
@@ -128,13 +130,10 @@ class EnforcementEngine(private val store: FocusBankStore, private val host: Enf
         }
 
         val remaining = if (store.appAllowance(packageName) != null) {
-            // The app's own daily bucket: does not draw on the Vault, so penalties stay put.
             store.consumeAppSecond(packageName)
             store.appAllowanceSeconds(packageName)
         } else {
-            if (store.chargeVaultSecond(packageName)) {
-                store.tickPenaltiesWhileSpending(packageName).forEach(host::onPenaltyExpired)
-            }
+            store.chargeVaultSecond(packageName)
             store.balanceSeconds()
         }
 

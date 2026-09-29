@@ -11,7 +11,7 @@
 
 ### Document Update Summary
 
-Version 1.4.0 changes how penalties are served. A penalty now counts down only while the user is spending general Vault time in another protected app. Idle time, a locked screen, an empty Vault, time from an app's own allowance, and free use under the daily unlock all leave it untouched. The penalized app stays locked throughout. The blocking rules moved out of `AppMonitorService` into a plain `EnforcementEngine` driven by one 1-second tick, and opening FocusBank itself now stops charging the app that was open before. The store, engine and penalty recheck are covered by Robolectric tests, for 66 tests in all.
+Version 1.4.0 confirms the penalty rule (FR-3.5): a penalty counts down in real time whenever the Vault holds more than 0 seconds and pauses while it is empty. Serving it costs no Vault time, and the penalized app stays locked throughout. The blocking rules moved out of `AppMonitorService` into a plain `EnforcementEngine` driven by one 1-second tick, and opening FocusBank itself now stops charging the app that was open before. The store, engine and penalty recheck are covered by Robolectric tests, for 69 tests in all.
 
 Version 1.3.0 adds an optional daily screen-free goal (FR-5.6) that gates the FR-3.8 daily unlock. It also removes the unused `SYSTEM_ALERT_WINDOW` and `PACKAGE_USAGE_STATS` permissions, moves all database work off the main thread (Room no longer allows main-thread queries, and enforcement runs on its own thread), and adds JVM unit tests for the core rules in `TaskRules`.
 
@@ -155,9 +155,9 @@ FocusBank requires high-privilege Android permissions to enforce distraction blo
   - Optional "Strict Lockdown Mode" prompts for confirmation password or prevents uninstalling during an active penalty.
 - **FR-3.3:** A missed task deadline shall randomly select one package from the current protected-app set only. It shall never select an unselected installed app.
 - **FR-3.4:** A penalty shall lock the selected protected app until its stored remaining penalty seconds reach zero (see FR-3.5; no wall-clock expiry timestamp is stored). A penalty that starts while its app is open locks it on the next tick.
-- **FR-3.5:** A penalty shall be stored as remaining seconds. It shall count down one second for each second of general Vault time the user actually spends in a *different* protected app. It shall not count down while the phone is idle, the screen is off or locked, the Vault is empty, time comes from an app's own allowance (FR-4.6), or use is free under the daily unlock (FR-3.8). The penalized app stays locked the whole time. Example: with 60 minutes in the Vault and a 20-minute penalty on Instagram, spending 20 minutes in YouTube serves the penalty and leaves 40 minutes in the Vault.
+- **FR-3.5:** A penalty shall be stored as remaining seconds. It shall count down in real time, one second per second, whenever the general Vault holds more than 0 seconds, whether or not the phone is in use. It shall pause while the Vault is empty and resume as soon as time is added. Serving a penalty does not take time from the Vault, and the penalized app stays locked until it is served. Example: with 60 minutes in the Vault and a 20-minute penalty on Instagram, Instagram unlocks 20 minutes later and the Vault still holds 60 minutes, minus anything spent in other apps.
 - **FR-3.6:** When a pending penalty is discovered at app launch, the UI shall animate a dice roll and end by showing the selected protected app and remaining penalty countdown.
-- **FR-3.7:** The Vault shall show the selected app and its remaining penalty time, and shall explain that it counts down only while Vault time is spent in other apps (shown as paused when the Vault is empty).
+- **FR-3.7:** The Vault shall show the selected app and a live penalty countdown, shown as paused while the Vault is empty.
 - **FR-3.8:** When all stored tasks are complete, at least one was completed today, and the screen-free goal (FR-5.6) is met or not set, allowance enforcement shall be bypassed for the rest of that day. Penalties still apply.
 - **FR-3.9:** The dice reveal shall be shown once per unique penalty instance and shall not repeat on every app launch while that same penalty remains active.
 - **FR-3.10:** When a penalty's countdown reaches zero, the enforcement service shall recheck the associated task. Only if the task is still incomplete may another protected-app penalty be created or a reroll consumed. A reroll is never consumed when no penalty would apply (no protected apps, or zero penalty minutes).
@@ -278,7 +278,7 @@ CREATE TABLE usage_records (
 - **Minification:** R8 configured with keep rules for Room Entities and Compose runtime.
 
 ### 8.2 Testing & Validation Plan
-1. **Unit Testing** (`app/src/test`, `./gradlew testDebugUnitTest`, 66 tests): `TaskRulesTest` covers the pure rules. `FocusBankStoreTest` (Robolectric, in-memory Room) covers allowances, completion, charging, penalties, the screen-free goal, backup/restore and reset. `EnforcementEngineTest` drives the blocking engine through a fake phone. `PenaltyRecheckTest` covers FR-3.10 and alarm scheduling.
+1. **Unit Testing** (`app/src/test`, `./gradlew testDebugUnitTest`): `TaskRulesTest` covers the pure rules. 69 tests in total. `FocusBankStoreTest` (Robolectric, in-memory Room) covers allowances, completion, charging, penalties, the screen-free goal, backup/restore and reset. `EnforcementEngineTest` drives the blocking engine through a fake phone. `PenaltyRecheckTest` covers FR-3.10 and alarm scheduling.
 2. **Instrumentation Tests:** Accessibility event firing, task-to-reward allocation integration tests.
 3. **Hardware Battery Testing:** Run benchmark on physical device for 24-hour cycle with 20+ app swaps to verify minimal power drain.
 

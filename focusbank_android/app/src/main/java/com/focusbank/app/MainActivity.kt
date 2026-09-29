@@ -468,8 +468,8 @@ private fun VaultScreen(
                         Text("${appLabel(context, penalty.packageName)}: %02d:%02d:%02d remaining".format(hours, minutes, seconds))
                     }
                     Text(
-                        if (balance <= 0L) "Paused: the Vault is empty. Penalties count down only while you spend Vault time in other apps."
-                        else "Counts down only while you spend Vault time in other apps. Idle time doesn't count.",
+                        if (balance <= 0L) "Paused: penalties only count down while the Vault has time."
+                        else "Counting down. Penalties pause whenever the Vault is empty.",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }

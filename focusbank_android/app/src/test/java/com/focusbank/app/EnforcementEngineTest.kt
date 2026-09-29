@@ -232,18 +232,34 @@ class EnforcementEngineTest {
         assertEquals(CHROME, engine.activePackage)
     }
 
-    // --- Penalties count down only while Vault time is spent elsewhere (FR-3.5) ---
+    // --- Penalties count down in real time while the Vault has time (FR-3.5) ---
 
-    @Test fun penaltyWaitsWhileThePhoneIsIdle() {
+    @Test fun penaltyCountsDownWhileTheVaultHasTimeEvenWhenIdle() {
         fx.setBalance(100)
         store.setPenalty(INSTA, 1, "t")
+        open(LAUNCHER); seconds(10)
+        engine.onScreenOff(); seconds(10)
+        assertEquals(40L, store.penaltyRemainingSeconds(INSTA))
+        assertEquals("serving a penalty costs no Vault time", 100L, store.balanceSeconds())
+    }
+
+    @Test fun penaltyPausesWhileTheVaultIsEmpty() {
+        fx.setBalance(0)
+        store.setPenalty(INSTA, 1, "t")
         open(LAUNCHER); seconds(30)
-        open(NOTES); seconds(30)
-        engine.onScreenOff(); seconds(30)
         assertEquals(60L, store.penaltyRemainingSeconds(INSTA))
     }
 
-    @Test fun penaltyCountsDownWhileVaultTimeIsSpentInAnotherApp() {
+    @Test fun penaltyResumesOnceTheVaultHasTimeAgain() {
+        fx.setBalance(0)
+        store.setPenalty(INSTA, 1, "t")
+        seconds(10)
+        fx.setBalance(50)
+        seconds(10)
+        assertEquals(50L, store.penaltyRemainingSeconds(INSTA))
+    }
+
+    @Test fun usingAnotherAppDoesNotSpeedUpThePenalty() {
         fx.setBalance(100)
         store.setPenalty(INSTA, 1, "t")
         open(CHROME); seconds(20)
@@ -251,28 +267,27 @@ class EnforcementEngineTest {
         assertEquals(80L, store.balanceSeconds())
     }
 
-    @Test fun penaltyWaitsWhileTheVaultIsEmpty() {
-        store.addTask(task("a")); store.completeTask("a") // daily unlock: Chrome is free but costs nothing
-        fx.setBalance(0)
+    @Test fun penalizedAppStaysLockedUntilServed() {
+        fx.setBalance(100)
         store.setPenalty(INSTA, 1, "t")
-        open(CHROME); seconds(20)
-        assertEquals(60L, store.penaltyRemainingSeconds(INSTA))
+        seconds(30)
+        open(INSTA)
+        assertEquals(listOf(Triple(INSTA, true, 30L)), phone.blocks)
     }
 
-    @Test fun appAllowanceTimeDoesNotShortenPenalties() {
-        fx.setBalance(100)
-        store.setAppAllowance(CHROME, 5)
+    @Test fun penaltyRunningOutWhileTheVaultEmptiesStopsExactlyThere() {
+        // Chrome drains the Vault; the penalty pauses the moment it hits 0.
+        fx.setBalance(5)
         store.setPenalty(INSTA, 1, "t")
         open(CHROME); seconds(10)
-        assertEquals(100L, store.balanceSeconds())
-        assertEquals(290L, store.appAllowanceSeconds(CHROME))
-        assertEquals(60L, store.penaltyRemainingSeconds(INSTA))
+        assertEquals(0L, store.balanceSeconds())
+        assertEquals(55L, store.penaltyRemainingSeconds(INSTA))
     }
 
     @Test fun penaltyExpiryIsReportedOnceForTheRecheck() {
         fx.setBalance(100)
         store.setPenalty(INSTA, 1, "t")
-        open(CHROME); seconds(65)
+        seconds(65)
         assertEquals(listOf(INSTA), phone.expired)
         open(INSTA)
         assertTrue("Instagram is free again once the penalty is served", phone.blocks.isEmpty())
