@@ -4,12 +4,14 @@
 ---
 
 ### Document Control
-- **Document Version:** 1.4.0
+- **Document Version:** 1.5.0
 - **Author:** System Architecture & Product Engineering
 - **Status:** Release Candidate / Implementation Baseline
-- **Target OS:** Android (Minimum SDK: API 26 / Android 8.0 Oreo; Target SDK: API 34/35+)
+- **Target OS:** Android (Minimum SDK: API 26 / Android 8.0 Oreo; Target/Compile SDK: API 36 / Android 16)
 
 ### Document Update Summary
+
+Version 1.5.0 prepares for Google Play. It targets and compiles against API 36 (AGP 8.9.1, Gradle 8.11.1) with edge-to-edge layouts, and it shows an in-app Accessibility disclosure with a consent step before opening Accessibility settings. `QUERY_ALL_PACKAGES` is replaced by `<queries>` entries for launcher and home intents. The verse card and all verse text are removed. Android 10–13 now start the enforcement notification as a plain foreground service, because the special-use type only exists from Android 14.
 
 Version 1.4.0 confirms the penalty rule (FR-3.5): a penalty counts down in real time whenever the Vault holds more than 0 seconds and pauses while it is empty. Serving it costs no Vault time, and the penalized app stays locked throughout. The blocking rules moved out of `AppMonitorService` into a plain `EnforcementEngine` driven by one 1-second tick, and opening FocusBank itself now stops charging the app that was open before. The store, engine and penalty recheck are covered by Robolectric tests, for 69 tests in all.
 
@@ -108,10 +110,13 @@ FocusBank requires high-privilege Android permissions to enforce distraction blo
 | Permission Identifier | Usage Reason | Fallback / Graceful Failure |
 | :--- | :--- | :--- |
 | `BIND_ACCESSIBILITY_SERVICE` | Real-time interceptor when target package comes to foreground (`TYPE_WINDOW_STATE_CHANGED`). | Hard blocker: core app features cannot run without this active. |
-| `QUERY_ALL_PACKAGES` | Lists launchable installed apps for the protected-app selector (FR-4.1). | Requires a Play Console permission declaration (§8.4). |
 | `POST_NOTIFICATIONS` | Ongoing low-priority notification showing active countdown when distraction apps are in use. | Required on Android 13+ (API 33+) to guarantee foreground service stability. |
 | `FOREGROUND_SERVICE_SPECIAL_USE` | Keeps enforcement status visible while the Accessibility Service is connected. | Requires prominent disclosure and Play Console policy review. |
 | `RECEIVE_BOOT_COMPLETED` | Restores scheduled task deadline and reminder alarms after reboot or app update. | Tasks remain visible if alarms cannot be restored. |
+
+*Package visibility (1.5.0):* instead of `QUERY_ALL_PACKAGES`, the manifest declares `<queries>` for `MAIN`/`LAUNCHER` (the app selector) and `MAIN`/`HOME` (detecting the launcher). No permission declaration is needed.
+
+*Accessibility disclosure (1.5.0):* before opening Accessibility settings, FocusBank shows an in-app dialog. It explains what the service observes (the foreground app's package name and screen on/off), why (allowance, penalties, screen-free time), that nothing leaves the device, and how to turn it off. The user must tap "Agree and continue", and the time of consent is stored.
 
 *Removed in 1.3.0:* `SYSTEM_ALERT_WINDOW` (blocking uses `BlockOverlayActivity` launched with `FLAG_ACTIVITY_NEW_TASK`) and `PACKAGE_USAGE_STATS` (foreground detection uses only the Accessibility Service). Neither was ever requested or used.
 
@@ -172,7 +177,7 @@ FocusBank requires high-privilege Android permissions to enforce distraction blo
 - **FR-4.6:** Users may give a protected app its own daily minute allowance, which refills each calendar day. While an app has its own allowance, using it draws from that allowance instead of the general Vault balance.
 
 ### 4.5 Module 5: Schedule and Dashboard
-- **FR-5.1:** The Tasks screen shall show a persistent daily verse reference card with a source link.
+- **FR-5.1:** *Removed in 1.5.0.* The verse card was dropped because the translations it quoted are copyrighted.
 - **FR-5.2:** The Schedule screen shall show seven days as rows and eight three-hour windows as columns.
 - **FR-5.3:** Tasks shall appear in the matrix cell matching their deadline window, including exact due time.
 - **FR-5.4:** Schedule task text shall be color-coded by priority: high red, medium yellow, low green.
@@ -246,7 +251,6 @@ CREATE TABLE usage_records (
   └── Theme toggle
 
 [ 2. Tasks ]
-  ├── Persistent verse reference card
   ├── Calendar deadline and clock due-time controls
   ├── User-selected reminder time
   ├── Active and completed task sections
@@ -283,7 +287,7 @@ CREATE TABLE usage_records (
 3. **Hardware Battery Testing:** Run benchmark on physical device for 24-hour cycle with 20+ app swaps to verify minimal power drain.
 
 ### 8.3 Current Release Candidate
-- **Version:** 1.4.0 (versionCode 5)
+- **Version:** 1.5.0 (versionCode 6), targetSdk 36
 - **Debug APK:** `app/build/outputs/apk/debug/app-debug.apk`
 - **Unsigned Release APK:** `app/build/outputs/apk/release/app-release-unsigned.apk`
 - **Unsigned Release App Bundle:** `app/build/outputs/bundle/release/app-release.aab`
@@ -293,7 +297,7 @@ CREATE TABLE usage_records (
 ### 8.4 Release Gates
 1. Configure and protect a private release keystore; do not commit it or its passwords.
 2. Sign the App Bundle and verify Play App Signing configuration.
-3. Complete the Accessibility, foreground-service, notification, and `QUERY_ALL_PACKAGES` policy declarations.
+3. Complete the Accessibility API declaration (with a short video of the in-app disclosure and blocking), the foreground-service special-use justification, and the Data safety form. `QUERY_ALL_PACKAGES` is no longer requested.
 4. Add a privacy policy covering app monitoring, installed-app discovery, local usage records, and backup export.
 5. Test reboot recovery, alarms, penalties, rerolls, Room migration, backup restore, and Accessibility behavior across supported Android versions and device manufacturers.
 

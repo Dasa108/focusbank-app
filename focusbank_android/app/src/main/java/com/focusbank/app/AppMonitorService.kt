@@ -60,10 +60,10 @@ class AppMonitorService : AccessibilityService(), EnforcementHost {
         val notification = createMonitoringNotification(EnforcementEngine.IDLE_STATUS)
 
         runCatching {
+            // The specialUse type only exists from Android 14; older versions reject it, so they
+            // start without a type (which they don't require).
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 ServiceCompat.startForeground(this, 1001, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(1001, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
             } else {
                 startForeground(1001, notification)
             }

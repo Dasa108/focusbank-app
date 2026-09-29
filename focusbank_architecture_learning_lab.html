@@ -74,8 +74,8 @@
       <div>
         <div class="flex flex-wrap items-center justify-center md:justify-start gap-2 mb-2">
           <span class="badge bg-blue-900/60 text-blue-300 border border-blue-700">FocusBank Case Study</span>
-          <span class="badge bg-lime-900/60 text-lime-300 border border-lime-700">v1.4.0</span>
-          <span class="badge bg-emerald-900/60 text-emerald-300 border border-emerald-700">Android 14 Verified</span>
+          <span class="badge bg-lime-900/60 text-lime-300 border border-lime-700">v1.5.0</span>
+          <span class="badge bg-emerald-900/60 text-emerald-300 border border-emerald-700">Targets Android 16</span>
           <span class="badge bg-purple-900/60 text-purple-300 border border-purple-700">Beginner Friendly</span>
         </div>
         <h1 class="text-3xl md:text-4xl font-extrabold text-white tracking-tight">Android App Architecture & Engineering Lab</h1>
@@ -135,7 +135,7 @@
             Gradle is the automated build robot. When you run <code class="text-emerald-300">./gradlew assembleDebug</code>, Gradle fetches libraries (Compose, Room, Coroutines), compiles Kotlin files into Java bytecode, transforms them into Dalvik Executable (<code class="text-emerald-300">.dex</code>) files, and bundles your resources.
           </p>
           <div class="p-3 bg-gray-950 rounded border border-gray-800 text-xs text-gray-300">
-            <strong>Key File:</strong> <code class="text-blue-300">build.gradle.kts</code> defines dependencies and targets Android 14 (<code class="text-white">targetSdk = 34</code>).
+            <strong>Key File:</strong> <code class="text-blue-300">build.gradle.kts</code> defines dependencies and targets Android 16 (<code class="text-white">targetSdk = 36</code>). From API 35, Android forces apps to draw edge to edge, so screens must pad themselves around the system bars.
           </div>
         </div>
 
@@ -201,7 +201,7 @@
               <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">FocusBank Screen Anatomy</h4>
               <div class="space-y-2 text-xs">
                 <div class="flex justify-between border-b border-gray-800 py-1"><span class="text-gray-300">VaultScreen</span><span class="text-gray-500">Hero counter, usage chart, quick stats</span></div>
-                <div class="flex justify-between border-b border-gray-800 py-1"><span class="text-gray-300">TaskScreen</span><span class="text-gray-500">Eisenhower priorities, Gita verse, date picker</span></div>
+                <div class="flex justify-between border-b border-gray-800 py-1"><span class="text-gray-300">TaskScreen</span><span class="text-gray-500">Eisenhower sort, date &amp; reminder pickers</span></div>
                 <div class="flex justify-between border-b border-gray-800 py-1"><span class="text-gray-300">ScheduleScreen</span><span class="text-gray-500">7-day x 8-window matrix</span></div>
                 <div class="flex justify-between py-1"><span class="text-gray-300">AppsScreen</span><span class="text-gray-500">Per-app quotas, category filter, toggles</span></div>
               </div>
@@ -709,6 +709,13 @@
             </tbody>
           </table>
         </div>
+        <h3 class="text-base font-bold text-white pt-2">Play readiness in 1.5</h3>
+        <ul class="text-xs text-gray-300 space-y-1.5 list-disc list-inside">
+          <li>Targets and compiles against <strong>API 36</strong>, with edge-to-edge screens and system-bar icons that follow the app theme.</li>
+          <li>An in-app <strong>Accessibility disclosure</strong> with "Agree and continue" appears before Settings opens, as Play policy requires.</li>
+          <li><code>QUERY_ALL_PACKAGES</code> is replaced by <code>&lt;queries&gt;</code> for launcher and home apps.</li>
+          <li>Verse card removed. Android 10–13 no longer pass the Android 14-only foreground-service type.</li>
+        </ul>
         <h3 class="text-base font-bold text-white pt-2">Changed in 1.4</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
           <div class="p-3.5 rounded-lg bg-gray-950 border border-red-900/60 space-y-1.5">
@@ -742,7 +749,7 @@
           <li>Restore and reset can escape penalties. FR-3.2 anti-circumvention is not built.</li>
           <li>Alarms are inexact. The Android shell (<code>AppMonitorService</code>) is only tested on a device, not in unit tests.</li>
         </ul>
-        <p class="text-xs text-gray-500">Full list: <code>focusbank_software_requirements_specification.md</code> §9 · Decisions: <code>decisions.md</code> ADR-004 to ADR-012.</p>
+        <p class="text-xs text-gray-500">Full list: <code>focusbank_software_requirements_specification.md</code> §9 · Decisions: <code>decisions.md</code> ADR-004 to ADR-013.</p>
       </div>
     </section>
   </main>

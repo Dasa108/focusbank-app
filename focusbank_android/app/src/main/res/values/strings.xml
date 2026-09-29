@@ -1,4 +1,4 @@
 <resources>
     <string name="app_name">FocusBank</string>
-    <string name="accessibility_service_description">Monitors selected apps for FocusBank allowance enforcement</string>
+    <string name="accessibility_service_description">FocusBank uses this to see which app is on screen so it can block the apps you chose when your earned time runs out or a penalty is active. It does not read what you type or the content of other apps, and nothing leaves your phone.</string>
 </resources>

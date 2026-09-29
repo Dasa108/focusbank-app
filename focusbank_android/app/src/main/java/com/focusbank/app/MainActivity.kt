@@ -8,12 +8,12 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Build
-import android.net.Uri
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -120,6 +120,7 @@ class MainActivity : ComponentActivity() {
         ) {
             requestPermissions(arrayOf("android.permission.POST_NOTIFICATIONS"), 42)
         }
+        enableEdgeToEdge()
         // State is refreshed by the 1-second loop in FocusBankApp, so onResume no longer calls setContent
         // (that rebuilt the whole UI on every return and reset the selected tab and task form).
         setContent {
@@ -173,10 +174,10 @@ fun FocusBankApp(store: FocusBankStore, darkTheme: Boolean, onToggleTheme: () ->
     }
     var activePenalties by remember { mutableStateOf(store.activePenalties()) }
     var showPenaltyReveal by remember { mutableStateOf(false) }
+    var showAccessibilityDisclosure by remember { mutableStateOf(false) }
     var revealedPenaltyPackage by remember { mutableStateOf<String?>(null) }
     var diceFace by remember { mutableStateOf(1) }
     var diceRolling by remember { mutableStateOf(false) }
-    val verse = remember { gitaVerses.random() }
     val context = LocalContext.current
     var installedApps by remember { mutableStateOf<List<InstalledApp>>(emptyList()) }
     var accessibilityEnabled by remember { mutableStateOf(isEnforcementRunning(context)) }
@@ -230,6 +231,17 @@ fun FocusBankApp(store: FocusBankStore, darkTheme: Boolean, onToggleTheme: () ->
                 }
             },
             confirmButton = { TextButton(onClick = { showPenaltyReveal = false }) { Text("Continue") } }
+        )
+    }
+
+    if (showAccessibilityDisclosure) {
+        AccessibilityDisclosureDialog(
+            onAgree = {
+                showAccessibilityDisclosure = false
+                store.recordAccessibilityConsent()
+                context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            },
+            onDecline = { showAccessibilityDisclosure = false }
         )
     }
 
@@ -288,9 +300,9 @@ fun FocusBankApp(store: FocusBankStore, darkTheme: Boolean, onToggleTheme: () ->
                     },
                     onOpenSettings = { selectedTab = 3 },
                     accessibilityEnabled = accessibilityEnabled,
-                    onEnableAccessibility = {
-                        context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                    },
+                    // Play policy: prominent in-app disclosure and consent before sending the user to
+                    // Accessibility settings.
+                    onEnableAccessibility = { showAccessibilityDisclosure = true },
                     onReduceAllowance = { minutes ->
                         store.reduceAllowance(minutes)
                         balance = store.balanceSeconds()
@@ -298,7 +310,6 @@ fun FocusBankApp(store: FocusBankStore, darkTheme: Boolean, onToggleTheme: () ->
                 )
                 1 -> TaskScreen(
                     tasks = tasks,
-                    verse = verse,
                     rerolls = store.rerolls(),
                     onAdd = { title, priority, reward, deadlineMillis, penaltyMinutes, reminderMillis ->
                         val task = FocusTask(
@@ -351,6 +362,29 @@ fun FocusBankApp(store: FocusBankStore, darkTheme: Boolean, onToggleTheme: () ->
             }
         }
     }
+}
+
+@Composable
+private fun AccessibilityDisclosureDialog(onAgree: () -> Unit, onDecline: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDecline,
+        title = { Text("FocusBank uses the Accessibility API") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("To block the apps you choose, FocusBank needs Android's Accessibility service.")
+                Text("While it is on, FocusBank:", style = MaterialTheme.typography.titleSmall)
+                Text("• sees which app is on screen (its package name) each time you switch apps\n" +
+                    "• notices when the screen turns on or off\n" +
+                    "• opens a full-screen block over a protected app when your time runs out or a penalty is active")
+                Text("It uses this only to count your allowance, apply penalties and track screen-free time. " +
+                    "It does not read what you type or what is shown inside other apps. Everything stays on this phone: " +
+                    "nothing is uploaded or shared.")
+                Text("You can turn it off at any time in Settings › Accessibility › FocusBank.", style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = { TextButton(onClick = onAgree) { Text("Agree and continue") } },
+        dismissButton = { TextButton(onClick = onDecline) { Text("Not now") } }
+    )
 }
 
 @Composable
@@ -610,7 +644,6 @@ private fun MetricCard(value: String, label: String, modifier: Modifier) {
 @Composable
 private fun TaskScreen(
     tasks: List<FocusTask>,
-    verse: GitaVerse,
     rerolls: Int,
     onAdd: (String, String, Int, Long, Int, Long) -> Unit,
     onDelete: (FocusTask) -> Unit,
@@ -693,18 +726,6 @@ private fun TaskScreen(
             Text("Small wins compound.", style = MaterialTheme.typography.titleLarge)
             Text("Add a task, finish it, and earn time for yourself.", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp, bottom = 8.dp))
             Text("Penalty rerolls available: $rerolls", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-        }
-        item {
-            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("TODAY'S VERSE", style = MaterialTheme.typography.labelMedium)
-                    Text(verse.reference, style = MaterialTheme.typography.titleMedium)
-                    Text(verse.theme, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                    Text(verse.translation)
-                    Text("Translation supplied in the FocusBank verse compendium.", style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(verse.url))) }) { Text("Read full verse") }
-                }
-            }
         }
         item {
             OutlinedTextField(
@@ -935,56 +956,15 @@ private fun priorityColor(priority: String): Color = when (priority) {
 
 private data class InstalledApp(val packageName: String, val label: String)
 
-private data class GitaVerse(
-    val reference: String,
-    val theme: String,
-    val translation: String,
-    val url: String
-)
-
-private val gitaVerses = listOf(
-    GitaVerse("Bhagavad-gita 4.6", "Krishna's transcendental appearance", "Although I am unborn and My transcendental body never deteriorates, and although I am the Lord of all living entities, I still appear in every millennium in My original transcendental form.", "https://prabhupadabooks.com/bg/4/6"),
-    GitaVerse("Bhagavad-gita 4.9", "Knowing Krishna's activities", "One who knows the transcendental nature of My appearance and activities does not, upon leaving the body, take his birth again in this material world, but attains My eternal abode, O Arjuna.", "https://prabhupadabooks.com/bg/4/9"),
-    GitaVerse("Bhagavad-gita 7.7", "Krishna's supreme position", "O conqueror of wealth, there is no truth superior to Me. Everything rests upon Me, as pearls are strung on a thread.", "https://prabhupadabooks.com/bg/7/7"),
-    GitaVerse("Bhagavad-gita 7.19", "Vasudeva is everything", "After many births and deaths, he who is actually in knowledge surrenders unto Me, knowing Me to be the cause of all causes and all that is. Such a great soul is very rare.", "https://prabhupadabooks.com/bg/7/19"),
-    GitaVerse("Bhagavad-gita 9.4", "Krishna pervades the universe", "By Me, in My unmanifested form, this entire universe is pervaded. All beings are in Me, but I am not in them.", "https://prabhupadabooks.com/bg/9/4"),
-    GitaVerse("Bhagavad-gita 9.10", "Nature works under Krishna", "This material nature, which is one of My energies, is working under My direction, O son of Kuntī, producing all moving and nonmoving beings. Under its rule this manifestation is created and annihilated again and again.", "https://prabhupadabooks.com/bg/9/10"),
-    GitaVerse("Bhagavad-gita 9.11", "Krishna's transcendental nature", "Fools deride Me when I descend in the human form. They do not know My transcendental nature as the Supreme Lord of all that be.", "https://prabhupadabooks.com/bg/9/11"),
-    GitaVerse("Bhagavad-gita 9.17", "Krishna is the source", "I am the father of this universe, the mother, the support and the grandsire. I am the object of knowledge, the purifier and the syllable oṁ. I am also the Ṛg, the Sāma and the Yajur Vedas.", "https://prabhupadabooks.com/bg/9/17"),
-    GitaVerse("Bhagavad-gita 9.24", "Krishna is the enjoyer", "I am the only enjoyer and master of all sacrifices. Therefore, those who do not recognize My true transcendental nature fall down.", "https://prabhupadabooks.com/bg/9/24"),
-    GitaVerse("Bhagavad-gita 10.2", "Krishna is the source", "Neither the hosts of demigods nor the great sages know My origin or opulences, for, in every respect, I am the source of the demigods and sages.", "https://prabhupadabooks.com/bg/10/2"),
-    GitaVerse("Bhagavad-gita 10.8", "Everything emanates from Krishna", "I am the source of all spiritual and material worlds. Everything emanates from Me. The wise who perfectly know this engage in My devotional service and worship Me with all their hearts.", "https://prabhupadabooks.com/bg/10/8"),
-    GitaVerse("Bhagavad-gita 10.39", "Krishna is the generating seed", "Furthermore, O Arjuna, I am the generating seed of all existences. There is no being—moving or nonmoving—that can exist without Me.", "https://prabhupadabooks.com/bg/10/39"),
-    GitaVerse("Bhagavad-gita 10.41", "Krishna's splendor", "Know that all opulent, beautiful and glorious creations spring from but a spark of My splendor.", "https://prabhupadabooks.com/bg/10/41"),
-    GitaVerse("Bhagavad-gita 11.12", "The universal form", "If hundreds of thousands of suns were to rise at once into the sky, their radiance might resemble the effulgence of the Supreme Person in that universal form.", "https://prabhupadabooks.com/bg/11/12"),
-    GitaVerse("Bhagavad-gita 14.27", "Krishna is the basis", "And I am the basis of the impersonal Brahman, which is immortal, imperishable and eternal and is the constitutional position of ultimate happiness.", "https://prabhupadabooks.com/bg/14/27"),
-    GitaVerse("Bhagavad-gita 15.15", "Krishna in every heart", "I am seated in everyone's heart, and from Me come remembrance, knowledge and forgetfulness. By all the Vedas, I am to be known. Indeed, I am the compiler of Vedānta, and I am the knower of the Vedas.", "https://prabhupadabooks.com/bg/15/15"),
-    GitaVerse("Bhagavad-gita 15.19", "Knowing the Supreme Person", "Whoever knows Me as the Supreme Personality of Godhead, without doubting, is the knower of everything. He therefore engages himself in full devotional service to Me, O son of Bharata.", "https://prabhupadabooks.com/bg/15/19"),
-    GitaVerse("Bhagavad-gita 18.66", "Surrender to Krishna", "Abandon all varieties of religion and just surrender unto Me. I shall deliver you from all sinful reactions. Do not fear.", "https://prabhupadabooks.com/bg/18/66"),
-    GitaVerse("Bhagavad-gita 2.3", "Rise above weakness", "O son of Pṛthā, do not yield to this degrading impotence. It does not become you. Give up such petty weakness of heart and arise, O chastiser of the enemy.", "https://prabhupadabooks.com/bg/2/3"),
-    GitaVerse("Bhagavad-gita 2.31", "Duty and purpose", "Considering your specific duty as a kṣatriya, you should know that there is no better engagement for you than fighting on religious principles; and so there is no need for hesitation.", "https://prabhupadabooks.com/bg/2/31"),
-    GitaVerse("Bhagavad-gita 2.37", "Determination", "O son of Kuntī, either you will be killed on the battlefield and attain the heavenly planets, or you will conquer and enjoy the earthly kingdom. Therefore, get up with determination and fight.", "https://prabhupadabooks.com/bg/2/37"),
-    GitaVerse("Bhagavad-gita 2.38", "Equanimity in action", "Do thou fight for the sake of fighting, without considering happiness or distress, loss or gain, victory or defeat—and by so doing you shall never incur sin.", "https://prabhupadabooks.com/bg/2/38"),
-    GitaVerse("Bhagavad-gita 2.47", "Duty without attachment", "You have a right to perform your prescribed duty, but you are not entitled to the fruits of action. Never consider yourself the cause of the results of your activities, and never be attached to not doing your duty.", "https://prabhupadabooks.com/bg/2/47"),
-    GitaVerse("Bhagavad-gita 2.48", "Equanimity is yoga", "Perform your duty equipoised, O Arjuna, abandoning all attachment to success or failure. Such equanimity is called yoga.", "https://prabhupadabooks.com/bg/2/48"),
-    GitaVerse("Bhagavad-gita 2.50", "The art of work", "A man engaged in devotional service rids himself of both good and bad actions even in this life. Therefore strive for yoga, which is the art of all work.", "https://prabhupadabooks.com/bg/2/50"),
-    GitaVerse("Bhagavad-gita 3.4", "Action and perfection", "Not by merely abstaining from work can one achieve freedom from reaction, nor by renunciation alone can one attain perfection.", "https://prabhupadabooks.com/bg/3/4"),
-    GitaVerse("Bhagavad-gita 3.8", "Action over inaction", "Perform your prescribed duty, for action is better than inaction. A man cannot even maintain his physical body without work.", "https://prabhupadabooks.com/bg/3/8"),
-    GitaVerse("Bhagavad-gita 3.9", "Work as sacrifice", "Work done as a sacrifice for Viṣṇu has to be performed; otherwise work causes bondage in this material world. Therefore, O son of Kuntī, perform your prescribed duties for His satisfaction, and in that way you will always remain free from bondage.", "https://prabhupadabooks.com/bg/3/9"),
-    GitaVerse("Bhagavad-gita 3.19", "Duty without attachment", "Therefore, without being attached to the fruits of activities, one should act as a matter of duty, for by working without attachment one attains the Supreme.", "https://prabhupadabooks.com/bg/3/19"),
-    GitaVerse("Bhagavad-gita 3.20", "Work as an example", "Kings such as Janaka attained perfection solely by performance of prescribed duties. Therefore, just for the sake of educating the people in general, you should perform your work.", "https://prabhupadabooks.com/bg/3/20"),
-    GitaVerse("Bhagavad-gita 3.21", "Exemplary action", "Whatever action a great man performs, common men follow. And whatever standards he sets by exemplary acts, all the world pursues.", "https://prabhupadabooks.com/bg/3/21"),
-    GitaVerse("Bhagavad-gita 3.35", "Your own duty", "It is far better to discharge one's prescribed duties, even though faultily, than another's duties perfectly. Destruction in the course of performing one's own duty is better than engaging in another's duties, for to follow another's path is dangerous.", "https://prabhupadabooks.com/bg/3/35"),
-    GitaVerse("Bhagavad-gita 9.27", "Offer work to Krishna", "Whatever you do, whatever you eat, whatever you offer or give away, and whatever austerities you perform—do that, O son of Kuntī, as an offering unto Me.", "https://prabhupadabooks.com/bg/9/27"),
-    GitaVerse("Bhagavad-gita 18.46", "Work as worship", "By worship of the Lord, who is the source of all beings and who is all-pervading, a man can attain perfection through the performance of his own duty.", "https://prabhupadabooks.com/bg/18/46")
-)
-
 private fun loadInstalledApps(context: Context): List<InstalledApp> {
+    // Visible through the manifest's <queries> LAUNCHER entry; no QUERY_ALL_PACKAGES needed.
     val packageManager = context.packageManager
-    return packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
+    val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+    return packageManager.queryIntentActivities(launcherIntent, 0)
         .asSequence()
+        .map { it.activityInfo.applicationInfo }
         .filter { it.packageName != context.packageName }
-        .filter { packageManager.getLaunchIntentForPackage(it.packageName) != null }
+        .distinctBy { it.packageName }
         .map { InstalledApp(it.packageName, packageManager.getApplicationLabel(it).toString()) }
         .sortedBy { it.label.lowercase() }
         .toList()

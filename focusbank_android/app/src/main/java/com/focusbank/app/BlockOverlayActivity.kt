@@ -6,6 +6,9 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.material3.Surface
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -52,6 +55,7 @@ class BlockOverlayActivity : ComponentActivity() {
             }
         })
 
+        enableEdgeToEdge()
         setContent {
             FocusBankTheme(getSharedPreferences("focusbank", MODE_PRIVATE).getBoolean("dark_theme", false)) {
                 val store = remember { FocusBankStore(getSharedPreferences("focusbank", MODE_PRIVATE), this@BlockOverlayActivity) }
@@ -75,7 +79,8 @@ class BlockOverlayActivity : ComponentActivity() {
                     }
                 }
 
-                Column(Modifier.fillMaxSize().padding(28.dp), Arrangement.Center, Alignment.CenterHorizontally) {
+                Surface(Modifier.fillMaxSize()) {
+                Column(Modifier.fillMaxSize().safeDrawingPadding().padding(28.dp), Arrangement.Center, Alignment.CenterHorizontally) {
                     Text("FocusBank boundary", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(12.dp))
                     Text(if (isPenalty && initialPenalty > 0L) "Penalty Lockout" else "Allowance Exhausted", style = MaterialTheme.typography.headlineMedium)
@@ -130,6 +135,7 @@ class BlockOverlayActivity : ComponentActivity() {
                             finish()
                         }) { Text("Exit to Home") }
                     }
+                }
                 }
             }
         }

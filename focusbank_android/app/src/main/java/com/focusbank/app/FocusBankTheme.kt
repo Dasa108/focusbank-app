@@ -3,7 +3,11 @@ package com.focusbank.app
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
+import android.app.Activity
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 
 private val DarkColors = darkColorScheme(
     primary = androidx.compose.ui.graphics.Color(0xFFB9F27C),
@@ -28,5 +32,18 @@ private val LightColors = lightColorScheme(
 @Composable
 fun FocusBankTheme(darkTheme: Boolean, content: @Composable () -> Unit) {
     val colors = if (darkTheme) DarkColors else LightColors
+    // Edge-to-edge (enforced from targetSdk 35): the app draws behind transparent system bars, so
+    // their icons must follow the app's own theme toggle rather than the system setting.
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            (view.context as? Activity)?.window?.let { window ->
+                WindowCompat.getInsetsController(window, view).apply {
+                    isAppearanceLightStatusBars = !darkTheme
+                    isAppearanceLightNavigationBars = !darkTheme
+                }
+            }
+        }
+    }
     MaterialTheme(colorScheme = colors, content = content)
 }

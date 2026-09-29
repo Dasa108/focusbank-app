@@ -6,14 +6,14 @@ plugins {
 
 android {
     namespace = "com.focusbank.app"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.focusbank.app"
         minSdk = 26
-        targetSdk = 34
-        versionCode = 5
-        versionName = "1.4.0"
+        targetSdk = 36
+        versionCode = 6
+        versionName = "1.5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

@@ -186,6 +186,11 @@ class FocusBankStore(
 
     // --- Screen-free goal: minutes the screen must be off (after the day's first wake) ---
 
+    /** When the user accepted the Accessibility disclosure (kept as evidence of consent). */
+    fun recordAccessibilityConsent(now: Long = System.currentTimeMillis()) {
+        preferences.edit().putLong("accessibility_consent_at", now).apply()
+    }
+
     fun awayGoalMinutes(): Int = preferences.getInt("away_goal_minutes", 0)
     fun setAwayGoalMinutes(minutes: Int) {
         preferences.edit().putInt("away_goal_minutes", minutes.coerceIn(0, TaskRules.MAX_AWAY_GOAL_MINUTES)).apply()

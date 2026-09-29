@@ -50,3 +50,11 @@ Short architecture decision records. Newest last.
 ## ADR-012 — Blocking rules in a testable EnforcementEngine (v1.4.0)
 **Context:** The rules were spread across two `Handler` loops inside the accessibility service, mixed with framework calls, and could not be unit-tested. The 1.2 dead-ticker bug came from the two loops disagreeing.
 **Decision:** `EnforcementEngine` holds all decisions and state and is driven by one `tick()` per second plus window and screen events. `AppMonitorService` implements `EnforcementHost` (foreground candidates, keyguard, IME list, launcher check, block, status) and runs the tick on its `HandlerThread`. Tests use a fake host with Robolectric for the store. Opening FocusBank itself now ends tracking of the previous app.
+
+## ADR-013 — Play readiness: targetSdk 36, disclosure, no QUERY_ALL_PACKAGES, no verses (v1.5.0)
+**Context:** Play requires a recent targetSdk, restricts `QUERY_ALL_PACKAGES`, and requires an in-app disclosure for Accessibility API use outside assistive purposes. The verse translations were third-party copyrighted text.
+**Decision:**
+- Target and compile against API 36 (AGP 8.9.1, Gradle 8.11.1). Both activities call `enableEdgeToEdge()`, `FocusBankTheme` sets the system-bar icon colours from the app's theme, and the overlay pads to safe drawing insets.
+- Replace `QUERY_ALL_PACKAGES` with `<queries>` for `MAIN`/`LAUNCHER` and `MAIN`/`HOME`, and list apps with `queryIntentActivities`.
+- Show an Accessibility disclosure dialog with explicit consent before opening settings, and record `accessibility_consent_at`. Drop `flagReportViewIds`, which was unused.
+- Remove the verse card and all verse text.
