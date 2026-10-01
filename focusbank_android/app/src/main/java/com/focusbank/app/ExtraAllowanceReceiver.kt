@@ -20,7 +20,7 @@ class ExtraAllowanceReceiver : BroadcastReceiver() {
             val manager = context.getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(NotificationChannel("allowance", "Allowance", NotificationManager.IMPORTANCE_DEFAULT))
             manager.notify(1002, NotificationCompat.Builder(context, "allowance")
-                .setSmallIcon(R.drawable.ic_stat_focusbank)
+                .withFocusBankBranding(context)
                 .setContentTitle("Extra FocusBank time available")
                 .setContentText("Your scheduled 30-minute allowance has been added.")
                 .setAutoCancel(true)

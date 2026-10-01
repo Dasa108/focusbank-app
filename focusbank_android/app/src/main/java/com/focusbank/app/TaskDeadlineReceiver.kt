@@ -66,7 +66,7 @@ class TaskDeadlineReceiver : BroadcastReceiver() {
             val manager = context.getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(NotificationChannel("deadlines", "Task deadlines", NotificationManager.IMPORTANCE_DEFAULT))
             val notification = NotificationCompat.Builder(context, "deadlines")
-                .setSmallIcon(R.drawable.ic_stat_focusbank)
+                .withFocusBankBranding(context)
                 .setContentTitle(title)
                 .setContentText(text)
                 .setAutoCancel(true)

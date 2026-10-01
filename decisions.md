@@ -58,3 +58,7 @@ Short architecture decision records. Newest last.
 - Replace `QUERY_ALL_PACKAGES` with `<queries>` for `MAIN`/`LAUNCHER` and `MAIN`/`HOME`, and list apps with `queryIntentActivities`.
 - Show an Accessibility disclosure dialog with explicit consent before opening settings, and record `accessibility_consent_at`. Drop `flagReportViewIds`, which was unused.
 - Remove the verse card and all verse text.
+
+## ADR-014 — Notification identity and in-app terms (v1.5.1)
+**Context:** Small notification icons must be single-colour. The ring-and-arc mark read as a clock at 24 dp, which looked like the retired clock logo.
+**Decision:** The status-bar icon becomes a solid vault door with its bolts and check cut out (even-odd path). All notifications also use the brand green accent and the full-colour launcher logo as the large icon (`withFocusBankBranding`). The top-bar theme button becomes a "⋮" menu with Light/Dark and Terms & conditions; the text is in `LegalText.kt`.

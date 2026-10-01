@@ -181,6 +181,7 @@ FocusBank requires high-privilege Android permissions to enforce distraction blo
 - **FR-5.2:** The Schedule screen shall show seven days as rows and eight three-hour windows as columns.
 - **FR-5.3:** Tasks shall appear in the matrix cell matching their deadline window, including exact due time.
 - **FR-5.4:** Schedule task text shall be color-coded by priority: high red, medium yellow, low green.
+- **FR-5.7 (Menu and terms):** The top-right "⋮" menu shall offer the Light and Dark themes and a Terms & conditions screen. The terms text lives in `LegalText.kt`, and its bracketed placeholders for contact and governing law must be filled in before release.
 - **FR-5.6 (Screen-free goal):** Users may set a daily goal of 0 to 960 minutes with the screen off; 0 turns the goal off. Screen-off time counts only after the day's first screen-on, so overnight sleep is excluded, and only while the enforcement service is running. The Vault shall show today's progress. The goal is included in backups.
 - **FR-5.5:** The Vault shall show current balance, minutes earned today (on-time completions only), protected-app minutes spent today, and per-app usage summaries labelled with app names. The Vault screen shall scroll so every section is reachable.
 
@@ -248,7 +249,7 @@ CREATE TABLE usage_records (
   ├── Backup, restore, and reset actions
    ├── Quick Permission Health Indicator (Accessibility & Overlay Status)
    ├── Pending Tasks List (Sorted by Urgency)
-  └── Theme toggle
+  └── Top-right menu: Light / Dark theme, Terms & conditions
 
 [ 2. Tasks ]
   ├── Calendar deadline and clock due-time controls

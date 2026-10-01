@@ -3,8 +3,10 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <!-- Status-bar version of the FocusBank mark (white only; the system tints it). -->
-    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:pathData="M2.00,12.00a10,10 0 1,0 20,0a10,10 0 1,0 -20,0Z" />
-    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:pathData="M12,6A6,6 0 1,1 6,12" />
-    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M9.6,12.2L11.2,13.8L14.4,10.3" />
+    <!-- Status-bar version of the FocusBank mark: a solid vault door with its bolts and the check
+         cut out (even-odd fill). Single colour only; the system tints it. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M1.000,12.000a11,11 0 1,0 22,0a11,11 0 1,0 -22,0ZM19.600,12.000a1.0,1.0 0 1,0 2.0,0a1.0,1.0 0 1,0 -2.0,0ZM17.081,18.081a1.0,1.0 0 1,0 2.0,0a1.0,1.0 0 1,0 -2.0,0ZM11.000,20.600a1.0,1.0 0 1,0 2.0,0a1.0,1.0 0 1,0 -2.0,0ZM4.919,18.081a1.0,1.0 0 1,0 2.0,0a1.0,1.0 0 1,0 -2.0,0ZM2.400,12.000a1.0,1.0 0 1,0 2.0,0a1.0,1.0 0 1,0 -2.0,0ZM4.919,5.919a1.0,1.0 0 1,0 2.0,0a1.0,1.0 0 1,0 -2.0,0ZM11.000,3.400a1.0,1.0 0 1,0 2.0,0a1.0,1.0 0 1,0 -2.0,0ZM17.081,5.919a1.0,1.0 0 1,0 2.0,0a1.0,1.0 0 1,0 -2.0,0ZM6.681,13.319L10.638,17.276L17.555,9.782A1.3,1.3 0 0,0 15.645,8.018L10.562,13.524L8.519,11.481A1.3,1.3 0 0,0 6.681,13.319Z" />
 </vector>

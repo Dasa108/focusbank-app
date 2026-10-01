@@ -14,6 +14,13 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -175,6 +182,8 @@ fun FocusBankApp(store: FocusBankStore, darkTheme: Boolean, onToggleTheme: () ->
     var activePenalties by remember { mutableStateOf(store.activePenalties()) }
     var showPenaltyReveal by remember { mutableStateOf(false) }
     var showAccessibilityDisclosure by remember { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
+    var showTerms by remember { mutableStateOf(false) }
     var revealedPenaltyPackage by remember { mutableStateOf<String?>(null) }
     var diceFace by remember { mutableStateOf(1) }
     var diceRolling by remember { mutableStateOf(false) }
@@ -245,6 +254,11 @@ fun FocusBankApp(store: FocusBankStore, darkTheme: Boolean, onToggleTheme: () ->
         )
     }
 
+    if (showTerms) {
+        TermsScreen(onBack = { showTerms = false })
+        return
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -253,7 +267,38 @@ fun FocusBankApp(store: FocusBankStore, darkTheme: Boolean, onToggleTheme: () ->
                     containerColor = MaterialTheme.colorScheme.background
                 ),
                 actions = {
-                    TextButton(onClick = onToggleTheme) { Text(if (darkTheme) "Light" else "Dark") }
+                    Box {
+                        IconButton(
+                            onClick = { menuOpen = true },
+                            modifier = Modifier.semantics { contentDescription = "More options" }
+                        ) { Text("⋮", style = MaterialTheme.typography.titleLarge) }
+                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            Text(
+                                "Theme",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                            )
+                            listOf(false to "Light", true to "Dark").forEach { (dark, label) ->
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    trailingIcon = { if (darkTheme == dark) Text("✓") },
+                                    onClick = {
+                                        if (darkTheme != dark) onToggleTheme()
+                                        menuOpen = false
+                                    }
+                                )
+                            }
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text("Terms & conditions") },
+                                onClick = {
+                                    menuOpen = false
+                                    showTerms = true
+                                }
+                            )
+                        }
+                    }
                 }
             )
         },
@@ -359,6 +404,39 @@ fun FocusBankApp(store: FocusBankStore, darkTheme: Boolean, onToggleTheme: () ->
                         appAllowances = store.appAllowances()
                     }
                 )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TermsScreen(onBack: () -> Unit) {
+    BackHandler(onBack = onBack)
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Terms & conditions", style = MaterialTheme.typography.headlineSmall) },
+                navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
+                colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
+            )
+        }
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            item {
+                Text("Last updated ${LegalText.TERMS_EFFECTIVE_DATE}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            }
+            items(LegalText.terms) { section ->
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(section.title, style = MaterialTheme.typography.titleMedium)
+                    Text(section.body, style = MaterialTheme.typography.bodyMedium)
+                }
             }
         }
     }

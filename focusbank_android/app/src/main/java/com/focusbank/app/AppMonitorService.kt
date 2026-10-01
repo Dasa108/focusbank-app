@@ -90,7 +90,7 @@ class AppMonitorService : AccessibilityService(), EnforcementHost {
 
     private fun createMonitoringNotification(contentText: String): android.app.Notification {
         return NotificationCompat.Builder(this, "enforcement")
-            .setSmallIcon(R.drawable.ic_stat_focusbank)
+            .withFocusBankBranding(this)
             .setContentTitle("FocusBank protection is active")
             .setContentText(contentText)
             .setOngoing(true)
