@@ -106,6 +106,8 @@
         8. Master Certification Quiz
       </button>
       <button onclick="switchTab('tab-audit')" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium bg-gray-800 text-gray-300 hover:bg-gray-700 transition">9. Spec Audit (v1.2)</button>
+      <button onclick="switchTab('tab-lessons')" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium bg-gray-800 text-gray-300 hover:bg-gray-700 transition">10. Engineering Lessons</button>
+      <button onclick="switchTab('tab-publish')" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium bg-gray-800 text-gray-300 hover:bg-gray-700 transition">11. Keystores &amp; Publishing</button>
     </nav>
   </header>
 
@@ -278,9 +280,14 @@
             </div>
           </div>
         </div>
+        <div class="mt-6 p-4 rounded-lg bg-gray-950 border border-lime-900/60 text-xs text-gray-300 space-y-1">
+          <div class="font-bold text-lime-300">v1.6: the database grew a column</div>
+          <p>Plans added <code>isPlan</code> to the <code>tasks</code> table. Room is now at schema version 2, with a <code>MIGRATION_1_2</code> that runs <code>ALTER TABLE … ADD COLUMN isPlan INTEGER NOT NULL DEFAULT 0</code> once on existing installs. All reads run off the main thread. See tab 10, lessons 1 and 3.</p>
+        </div>
       </div>
     </section>
 
+    <!-- (storage) v1.6 migration note is in tab 10, lesson 3 -->
     <!-- TAB 4: ACCESSIBILITY & BACKGROUND GUARDIAN -->
     <section id="tab-guardian" class="tab-pane hidden space-y-6">
       <div class="p-6 rounded-xl bg-gray-900 border border-gray-800">
@@ -289,6 +296,9 @@
           How can FocusBank know when you opened Instagram or Chrome if FocusBank isn't on your screen? Modern Android does not allow background apps to spy on running apps—<strong>unless</strong> they run an authorized <code class="text-blue-300">AccessibilityService</code>.
         </p>
 
+        <div class="mb-6 p-3 rounded-lg bg-lime-950/40 border border-lime-900/60 text-xs text-gray-300">
+          <strong class="text-lime-300">Since v1.4:</strong> the service only forwards events. Every decision (charge, block, penalty) lives in <code class="text-lime-300">EnforcementEngine</code>, driven by one 1-second <code>tick()</code> on a background thread. See tab 10, lessons 1 and 2.
+        </div>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div class="p-4 rounded-lg bg-gray-950 border border-gray-800 space-y-2">
             <span class="badge bg-blue-900 text-blue-300">1. OS Event Callback</span>
@@ -503,8 +513,8 @@
           <!-- Snippet 1 -->
           <div class="border border-gray-800 rounded-xl overflow-hidden">
             <div class="bg-gray-950 px-4 py-2 border-b border-gray-800 flex justify-between items-center text-xs">
-              <span class="font-mono text-blue-400">AppMonitorService.kt &mdash; Keyboard & System Filter</span>
-              <span class="text-gray-500">Simplified from line 156</span>
+              <span class="font-mono text-blue-400">EnforcementEngine.kt &mdash; Keyboard &amp; System Filter (was AppMonitorService)</span>
+              <span class="text-gray-500">Simplified from isIgnored()</span>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2">
               <div class="code-block p-4 text-xs text-gray-300 border-r border-gray-800">
@@ -627,6 +637,15 @@
               </p>
             </div>
           </div>
+          <div class="flex items-start gap-4 p-4 rounded-lg bg-gray-950 border border-lime-900/60">
+            <div class="w-8 h-8 rounded-full bg-lime-900 text-lime-300 flex items-center justify-center font-bold text-sm">5</div>
+            <div>
+              <h4 class="font-bold text-white text-sm">Today's toolchain and the release signing</h4>
+              <p class="text-xs text-gray-400 mt-1">
+                FocusBank builds with AGP 8.9.1, Gradle 8.11.1 and Kotlin 1.9, compiling against and targeting API 36. Release builds read your upload key from <code class="text-lime-300">keystore.properties</code>. Without it they come out unsigned, with a warning. Keystores and the full Play route are in tab 11.
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -648,7 +667,7 @@
           <div class="text-center md:text-right flex md:flex-col items-center md:items-end justify-between gap-2">
             <div>
               <div class="text-xs uppercase tracking-wider text-gray-400 font-semibold">Your Score</div>
-              <div class="text-2xl md:text-3xl font-extrabold text-blue-400 font-mono" id="quiz-score-display">0 / 12</div>
+              <div class="text-2xl md:text-3xl font-extrabold text-blue-400 font-mono" id="quiz-score-display">0 / 17</div>
             </div>
             <button onclick="resetQuiz()" class="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs font-semibold text-gray-300 border border-gray-700 transition">
               Reset Exam
@@ -759,6 +778,402 @@
         <p class="text-xs text-gray-500">Full list: <code>focusbank_software_requirements_specification.md</code> §9 · Decisions: <code>decisions.md</code> ADR-004 to ADR-016.</p>
       </div>
     </section>
+
+    <!-- TAB 10: ENGINEERING LESSONS -->
+    <section id="tab-lessons" class="tab-pane hidden space-y-6">
+      <div class="p-6 rounded-xl bg-gray-900 border border-gray-800 space-y-2">
+        <span class="badge bg-lime-900/70 text-lime-300 border border-lime-700">Study guide · v1.2 → v1.6</span>
+        <h2 class="text-xl font-bold text-white">Engineering Lessons from Building FocusBank</h2>
+        <p class="text-sm text-gray-400">Eight lessons, each tied to a real bug or decision in this codebase. Read them in order: each builds on the one before.</p>
+      </div>
+
+      <!-- Lesson 1: Threads -->
+      <div class="p-6 rounded-xl bg-gray-900 border border-gray-800 space-y-4">
+        <h3 class="text-lg font-bold text-white">1. One main thread, and nothing slow on it</h3>
+        <p class="text-sm text-gray-300">Android draws the screen and handles taps on a single <strong>main thread</strong>. Anything slow there, like a database query, freezes the UI, and after about 5 seconds Android shows "App isn't responding". Room enforces this by <em>throwing</em> if you query on the main thread, unless you call <code class="text-amber-300">allowMainThreadQueries()</code>. FocusBank 1.2 did exactly that, and 1.3 removed it.</p>
+        <svg viewBox="0 0 760 270" class="w-full max-w-3xl mx-auto" role="img" aria-label="FocusBank threading model">
+          <defs><marker id="ar1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10z" fill="#9ca3af"/></marker></defs>
+          <g font-family="ui-sans-serif,system-ui" font-size="13">
+            <rect x="10" y="20" width="200" height="56" rx="8" fill="#172554" stroke="#3b82f6"/>
+            <text x="110" y="44" text-anchor="middle" fill="#bfdbfe" font-weight="700">Main thread</text>
+            <text x="110" y="63" text-anchor="middle" fill="#93c5fd" font-size="11">Compose screens, taps</text>
+            <rect x="10" y="106" width="200" height="56" rx="8" fill="#172554" stroke="#3b82f6"/>
+            <text x="110" y="130" text-anchor="middle" fill="#bfdbfe" font-weight="700">BroadcastReceivers</text>
+            <text x="110" y="149" text-anchor="middle" fill="#93c5fd" font-size="11">alarms, boot (start on main)</text>
+            <rect x="10" y="192" width="200" height="56" rx="8" fill="#14532d" stroke="#22c55e"/>
+            <text x="110" y="216" text-anchor="middle" fill="#bbf7d0" font-weight="700">AccessibilityService</text>
+            <text x="110" y="235" text-anchor="middle" fill="#86efac" font-size="11">window + screen events</text>
+
+            <rect x="290" y="20" width="200" height="56" rx="8" fill="#1f2937" stroke="#6b7280"/>
+            <text x="390" y="44" text-anchor="middle" fill="#e5e7eb" font-weight="700">Dispatchers.IO</text>
+            <text x="390" y="63" text-anchor="middle" fill="#9ca3af" font-size="11">coroutine thread pool</text>
+            <rect x="290" y="106" width="200" height="56" rx="8" fill="#1f2937" stroke="#6b7280"/>
+            <text x="390" y="130" text-anchor="middle" fill="#e5e7eb" font-weight="700">goAsync() + Thread</text>
+            <text x="390" y="149" text-anchor="middle" fill="#9ca3af" font-size="11">runAsync { … }</text>
+            <rect x="290" y="192" width="200" height="56" rx="8" fill="#1f2937" stroke="#6b7280"/>
+            <text x="390" y="216" text-anchor="middle" fill="#e5e7eb" font-weight="700">HandlerThread</text>
+            <text x="390" y="235" text-anchor="middle" fill="#9ca3af" font-size="11">own thread · 1 s tick</text>
+
+            <rect x="570" y="78" width="180" height="114" rx="10" fill="#422006" stroke="#f59e0b"/>
+            <text x="660" y="108" text-anchor="middle" fill="#fde68a" font-weight="700">FocusBankStore</text>
+            <text x="660" y="128" text-anchor="middle" fill="#fcd34d" font-size="11">Room (tasks, usage)</text>
+            <text x="660" y="145" text-anchor="middle" fill="#fcd34d" font-size="11">SharedPreferences</text>
+            <text x="660" y="170" text-anchor="middle" fill="#fbbf24" font-size="11" font-weight="700">LOCK on balance writes</text>
+
+            <path d="M210,48 H286" stroke="#9ca3af" stroke-width="1.6" marker-end="url(#ar1)"/>
+            <path d="M210,134 H286" stroke="#9ca3af" stroke-width="1.6" marker-end="url(#ar1)"/>
+            <path d="M210,220 H286" stroke="#9ca3af" stroke-width="1.6" marker-end="url(#ar1)"/>
+            <path d="M490,48 C530,48 530,110 566,110" fill="none" stroke="#9ca3af" stroke-width="1.6" marker-end="url(#ar1)"/>
+            <path d="M490,134 H566" stroke="#9ca3af" stroke-width="1.6" marker-end="url(#ar1)"/>
+            <path d="M490,220 C530,220 530,160 566,160" fill="none" stroke="#9ca3af" stroke-width="1.6" marker-end="url(#ar1)"/>
+          </g>
+        </svg>
+        <p class="text-xs text-gray-400 text-center">Each entry point hands database work to its own background route; the store is shared.</p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+          <div class="p-4 rounded-lg bg-gray-950 border border-gray-800 space-y-2">
+            <div class="font-bold text-amber-300">The new problem: two threads, one balance</div>
+            <p class="text-gray-400">Once the service ticked on its own thread, two writers could collide. The UI reads the balance (100), adds a 20-minute reward and writes 1300. Meanwhile the service reads 100, subtracts 1 second and writes 99. The reward is lost. This is a <strong>read-modify-write race</strong>.</p>
+            <p class="text-gray-400">The fix: every balance, reroll and penalty update runs inside <code class="text-amber-300">synchronized(LOCK) { … }</code>, so only one thread can be in the middle of an update.</p>
+          </div>
+          <div class="p-4 rounded-lg bg-gray-950 border border-gray-800 space-y-2">
+            <div class="font-bold text-blue-300">Rule of thumb</div>
+            <ul class="list-disc list-inside text-gray-400 space-y-1">
+              <li>UI → <code>scope.launch { withContext(Dispatchers.IO) { … } }</code></li>
+              <li>Receivers → <code>goAsync()</code> keeps the process alive while a thread works</li>
+              <li>Long-lived services → a <code>HandlerThread</code> that owns all their state</li>
+              <li>Shared mutable data → one lock, or one owning thread</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lesson 2: Testability -->
+      <div class="p-6 rounded-xl bg-gray-900 border border-gray-800 space-y-4">
+        <h3 class="text-lg font-bold text-white">2. Make the rules testable by pushing Android to the edge</h3>
+        <p class="text-sm text-gray-300">The blocking rules used to live inside <code>AppMonitorService</code>, mixed with calls only a real phone can make. You can't unit-test that. Version 1.4 moved every decision into <code class="text-lime-300">EnforcementEngine</code>, which talks to the phone only through a small interface, <code class="text-lime-300">EnforcementHost</code>. The real service implements it on the phone, and a <strong>FakePhone</strong> implements it in tests.</p>
+        <svg viewBox="0 0 760 230" class="w-full max-w-3xl mx-auto" role="img" aria-label="Engine and host architecture">
+          <defs><marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10z" fill="#9ca3af"/></marker></defs>
+          <g font-family="ui-sans-serif,system-ui" font-size="13">
+            <rect x="20" y="20" width="210" height="60" rx="8" fill="#14532d" stroke="#22c55e"/>
+            <text x="125" y="45" text-anchor="middle" fill="#bbf7d0" font-weight="700">AppMonitorService</text>
+            <text x="125" y="65" text-anchor="middle" fill="#86efac" font-size="11">real phone (Android APIs)</text>
+            <rect x="20" y="150" width="210" height="60" rx="8" fill="#3b0764" stroke="#a855f7"/>
+            <text x="125" y="175" text-anchor="middle" fill="#e9d5ff" font-weight="700">FakePhone</text>
+            <text x="125" y="195" text-anchor="middle" fill="#d8b4fe" font-size="11">tests: scripted screen + clock</text>
+            <rect x="290" y="85" width="180" height="60" rx="8" fill="#1f2937" stroke="#9ca3af" stroke-dasharray="5 4"/>
+            <text x="380" y="110" text-anchor="middle" fill="#e5e7eb" font-weight="700">EnforcementHost</text>
+            <text x="380" y="130" text-anchor="middle" fill="#9ca3af" font-size="11">interface</text>
+            <rect x="530" y="20" width="210" height="60" rx="8" fill="#365314" stroke="#a3e635"/>
+            <text x="635" y="45" text-anchor="middle" fill="#ecfccb" font-weight="700">EnforcementEngine</text>
+            <text x="635" y="65" text-anchor="middle" fill="#d9f99d" font-size="11">all blocking decisions</text>
+            <rect x="530" y="150" width="210" height="60" rx="8" fill="#422006" stroke="#f59e0b"/>
+            <text x="635" y="175" text-anchor="middle" fill="#fde68a" font-weight="700">FocusBankStore</text>
+            <text x="635" y="195" text-anchor="middle" fill="#fcd34d" font-size="11">data + TaskRules (pure rules)</text>
+            <path d="M230,50 C260,50 260,100 286,105" fill="none" stroke="#9ca3af" stroke-width="1.6" marker-end="url(#ar2)"/>
+            <path d="M230,180 C260,180 260,130 286,125" fill="none" stroke="#9ca3af" stroke-width="1.6" marker-end="url(#ar2)"/>
+            <path d="M530,55 C500,60 490,90 474,100" fill="none" stroke="#9ca3af" stroke-width="1.6" marker-end="url(#ar2)"/>
+            <path d="M635,80 V146" stroke="#9ca3af" stroke-width="1.6" marker-end="url(#ar2)"/>
+            <text x="300" y="78" fill="#9ca3af" font-size="11">implemented by both</text>
+            <text x="482" y="62" fill="#9ca3af" font-size="11" text-anchor="end">calls</text>
+            <text x="643" y="118" fill="#9ca3af" font-size="11">reads / writes</text>
+          </g>
+        </svg>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          <div class="p-4 rounded-lg bg-gray-950 border border-gray-800 space-y-1">
+            <div class="font-bold text-lime-300">Pure rules → plain JUnit</div>
+            <p class="text-gray-400"><code>TaskRules</code> has no Android code, so <code>rewardSeconds()</code>, <code>dailyUnlock()</code> and the others test in milliseconds on your laptop.</p>
+          </div>
+          <div class="p-4 rounded-lg bg-gray-950 border border-gray-800 space-y-1">
+            <div class="font-bold text-purple-300">Android pieces → Robolectric</div>
+            <p class="text-gray-400">Robolectric simulates SharedPreferences, Room (in memory), alarms and notifications on the JVM, so the store and receivers run without a phone.</p>
+          </div>
+          <div class="p-4 rounded-lg bg-gray-950 border border-gray-800 space-y-1">
+            <div class="font-bold text-red-300">Test your tests (mutation)</div>
+            <p class="text-gray-400">Break a rule on purpose and check that a test fails. Breaking the old Chrome → WhatsApp hand-off made a test fail, so that bug can't come back unnoticed.</p>
+          </div>
+        </div>
+        <p class="text-xs text-gray-400"><strong class="text-amber-300">The 11 pm lesson:</strong> one test said "a task due in 1 hour blocks today's unlock". It passed all day and failed at 11:12 pm, because 1 hour later was tomorrow. Tests that read the real clock must pick times that hold at any hour, or take the clock as a parameter.</p>
+      </div>
+
+      <!-- Lesson 3: Migrations -->
+      <div class="p-6 rounded-xl bg-gray-900 border border-gray-800 space-y-3">
+        <h3 class="text-lg font-bold text-white">3. Changing a database that already has your data</h3>
+        <p class="text-sm text-gray-300">Plans needed a new <code>isPlan</code> column, but your phone already had a version 1 database with real tasks. Room stores a schema version. When the code says version 2, Room runs your <strong>migration</strong> once and then checks that the result matches the new entity exactly. Without a migration, the app crashes, or it wipes the data if you allowed destructive migration.</p>
+        <div class="code-block p-4 text-xs text-gray-300 overflow-x-auto">
+          <div class="text-gray-500">// FocusBankDatabase.kt</div>
+          <div>@ColumnInfo(defaultValue = <span class="text-emerald-300">"0"</span>) <span class="text-blue-400">val</span> isPlan: Boolean = <span class="text-blue-400">false</span></div>
+          <div class="pt-1"><span class="text-blue-400">val</span> MIGRATION_1_2 = <span class="text-blue-400">object</span> : Migration(1, 2) {</div>
+          <div class="pl-4"><span class="text-blue-400">override fun</span> migrate(db: SupportSQLiteDatabase) {</div>
+          <div class="pl-8">db.execSQL(<span class="text-emerald-300">"ALTER TABLE tasks ADD COLUMN isPlan INTEGER NOT NULL DEFAULT 0"</span>)</div>
+          <div class="pl-4">}</div>
+          <div>}</div>
+        </div>
+        <ul class="text-xs text-gray-400 list-disc list-inside space-y-1">
+          <li>The SQL <code>DEFAULT 0</code> and the entity's <code>defaultValue = "0"</code> must agree, or Room's schema check fails at startup.</li>
+          <li>The test builds a database with the <em>exact</em> v1 SQL Room generated (copied from <code>FocusBankDatabase_Impl</code>), runs the migration and reads the old task back.</li>
+          <li>On your phone: <code>PRAGMA user_version</code> went from 1 to 2, and your task survived as a commitment.</li>
+          <li>Never edit a migration that has shipped. Add a new one (2 → 3) instead.</li>
+        </ul>
+      </div>
+
+      <!-- Lesson 4: Modern Android rules -->
+      <div class="p-6 rounded-xl bg-gray-900 border border-gray-800 space-y-3">
+        <h3 class="text-lg font-bold text-white">4. Rules that change with each Android version</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs text-left">
+            <thead><tr class="text-gray-400 border-b border-gray-800"><th class="py-2 pr-3">Rule</th><th class="py-2 pr-3">From</th><th class="py-2">What FocusBank does</th></tr></thead>
+            <tbody class="text-gray-300 divide-y divide-gray-800">
+              <tr><td class="py-2 pr-3">Apps draw edge to edge, behind the status and navigation bars</td><td class="py-2 pr-3">targetSdk 35</td><td class="py-2"><code>enableEdgeToEdge()</code>, Scaffold insets, <code>safeDrawingPadding()</code>; bar icons follow the app's theme</td></tr>
+              <tr><td class="py-2 pr-3">Package visibility: you only see apps you declare</td><td class="py-2 pr-3">Android 11</td><td class="py-2"><code>&lt;queries&gt;</code> for launcher and home intents instead of <code>QUERY_ALL_PACKAGES</code></td></tr>
+              <tr><td class="py-2 pr-3">Foreground services must declare a type</td><td class="py-2 pr-3">Android 14</td><td class="py-2"><code>specialUse</code> on 14+ only. Passing that type on Android 10–13 was a real bug found by lint.</td></tr>
+              <tr><td class="py-2 pr-3">Notifications need runtime permission</td><td class="py-2 pr-3">Android 13</td><td class="py-2">Asks for <code>POST_NOTIFICATIONS</code> on launch</td></tr>
+              <tr><td class="py-2 pr-3">Small notification icons are single-colour (alpha only)</td><td class="py-2 pr-3">Android 5</td><td class="py-2">A white vault-and-check mark; the colour logo goes in the large icon</td></tr>
+              <tr><td class="py-2 pr-3">Play requires a recent targetSdk each August</td><td class="py-2 pr-3">yearly</td><td class="py-2">Now 36; plan to raise it once a year</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="text-xs text-gray-400">Tip: run <code class="text-blue-300">./gradlew lintDebug</code> after raising targetSdk. Lint flags API-level mistakes like the foreground-type bug before they reach a phone.</p>
+      </div>
+
+      <!-- Lesson 5: Accessibility & security -->
+      <div class="p-6 rounded-xl bg-gray-900 border border-gray-800 space-y-3">
+        <h3 class="text-lg font-bold text-white">5. Accessibility is powerful, so everyone distrusts it</h3>
+        <p class="text-sm text-gray-300">An Accessibility service can see which app is open, and with <code>canRetrieveWindowContent</code> it can read what's on screen. Banking malware abuses exactly this, so the rest of the system defends against it:</p>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          <div class="p-4 rounded-lg bg-gray-950 border border-gray-800 space-y-1"><div class="font-bold text-blue-300">Google Play</div><p class="text-gray-400">Apps that aren't assistive tools need a prominent in-app disclosure plus explicit consent before the user enables the service, and a declaration in the Play Console.</p></div>
+          <div class="p-4 rounded-lg bg-gray-950 border border-gray-800 space-y-1"><div class="font-bold text-red-300">UPI and banking apps</div><p class="text-gray-400">Many refuse payments while an untrusted service is on. Each app's rule is secret. Some check what the service can see, others whether any service is on at all.</p></div>
+          <div class="p-4 rounded-lg bg-gray-950 border border-gray-800 space-y-1"><div class="font-bold text-amber-300">Android itself</div><p class="text-gray-400">A service may switch itself <em>off</em> (<code>disableSelf()</code>) but never back on. Turning it on always needs the user in Settings.</p></div>
+        </div>
+        <p class="text-xs text-gray-400"><strong class="text-lime-300">The FocusBank decision:</strong> an in-app off switch would make dodging the blocker one tap away. So the Vault <em>explains</em> the Settings route for UPI payments instead, and "Enable blocking" deep-links back. The friction is the feature.</p>
+      </div>
+
+      <!-- Lesson 6: Product rules -->
+      <div class="p-6 rounded-xl bg-gray-900 border border-gray-800 space-y-3">
+        <h3 class="text-lg font-bold text-white">6. Designing rules people can't easily game</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+          <div class="p-4 rounded-lg bg-gray-950 border border-gray-800 space-y-2">
+            <div class="font-bold text-white">Commitments vs plans</div>
+            <table class="w-full text-left">
+              <thead><tr class="text-gray-500"><th class="pr-2">Effect</th><th class="pr-2">Commitment</th><th>Plan</th></tr></thead>
+              <tbody class="text-gray-300">
+                <tr><td class="pr-2">Reward on time</td><td class="pr-2">Yes</td><td>No</td></tr>
+                <tr><td class="pr-2">Penalty if missed</td><td class="pr-2">Yes</td><td>No</td></tr>
+                <tr><td class="pr-2">Reroll if 24 h early</td><td class="pr-2">Yes</td><td>No</td></tr>
+                <tr><td class="pr-2">Blocks today's unlock</td><td class="pr-2">If due today/overdue</td><td>Never</td></tr>
+                <tr><td class="pr-2">Counts as today's work</td><td class="pr-2">Yes</td><td>No</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="p-4 rounded-lg bg-gray-950 border border-gray-800 space-y-2">
+            <div class="font-bold text-white">Ask: "how would I cheat this?"</div>
+            <ul class="list-disc list-inside text-gray-400 space-y-1">
+              <li>Plans pay nothing, or they would become a minute printer.</li>
+              <li>A task's type is fixed at creation, so a missed commitment can't become a plan.</li>
+              <li>A penalized app's protection can't be switched off.</li>
+              <li>A reset can't mint a second daily allowance.</li>
+              <li>Still open: one trivial commitment unlocks the day unless a screen-free goal is set.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lesson 7: Requirements -->
+      <div class="p-6 rounded-xl bg-gray-900 border border-gray-800 space-y-3">
+        <h3 class="text-lg font-bold text-white">7. Pin down a requirement with an example before you build it</h3>
+        <p class="text-sm text-gray-300">"The penalty should only be consumed when there is time in the vault" was first built as <em>"counts down only while you spend Vault time in another app"</em>. The intended rule was simpler: <em>"counts down in real time while the Vault is above 0"</em>. Both readings were plausible. A concrete example would have caught the mismatch before any code was written:</p>
+        <div class="p-3 rounded bg-gray-950 border border-gray-800 text-xs text-gray-300">"Vault 60 min, 20 min penalty on Instagram, phone idle for 20 min. Is Instagram free again?" <span class="text-lime-300">Intended: yes.</span> <span class="text-red-300">First build: no.</span></div>
+        <p class="text-xs text-gray-400">The cost was one extra version (1.4 → the fix) and the tests rewritten twice. Worked examples in the spec are cheaper than rework.</p>
+      </div>
+
+      <!-- Lesson 8: Git -->
+      <div class="p-6 rounded-xl bg-gray-900 border border-gray-800 space-y-3">
+        <h3 class="text-lg font-bold text-white">8. Git as a safety net</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+          <ul class="list-disc list-inside text-gray-400 space-y-1 p-4 rounded-lg bg-gray-950 border border-gray-800">
+            <li><strong class="text-gray-200">Commit = checkpoint.</strong> Every version (1.2 → 1.6) is one commit you can return to.</li>
+            <li><strong class="text-gray-200">Branch for work in progress</strong>, then merge into <code>main</code>. A fast-forward merge keeps history a straight line.</li>
+            <li><strong class="text-gray-200"><code>.gitignore</code> secrets first:</strong> <code>*.jks</code>, <code>keystore.properties</code>, <code>local.properties</code>.</li>
+          </ul>
+          <div class="code-block p-4 text-gray-300 space-y-0.5">
+            <div class="text-gray-500"># useful read-only commands</div>
+            <div>git log --oneline</div>
+            <div>git diff            <span class="text-gray-500"># what changed, uncommitted</span></div>
+            <div>git show 9c39fc9    <span class="text-gray-500"># one version's changes</span></div>
+            <div>git status --short</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 11: KEYSTORES & PUBLISHING -->
+    <section id="tab-publish" class="tab-pane hidden space-y-6">
+      <div class="p-6 rounded-xl bg-gray-900 border border-gray-800 space-y-2">
+        <span class="badge bg-amber-900/70 text-amber-300 border border-amber-700">Study guide · signing &amp; release</span>
+        <h2 class="text-xl font-bold text-white">Keystores and Publishing to Google Play</h2>
+        <p class="text-sm text-gray-400">Part A explains app signing from scratch. Part B walks the Play Store route step by step, with what it costs and how long it takes. Play's rules change, so <strong class="text-amber-300">confirm numbers in the Play Console before you rely on them</strong> (written October 2026).</p>
+      </div>
+
+      <!-- Part A -->
+      <div class="p-6 rounded-xl bg-gray-900 border border-gray-800 space-y-4">
+        <h3 class="text-lg font-bold text-white">Part A · What a keystore is</h3>
+        <p class="text-sm text-gray-300">Every APK is <strong>signed</strong> with a private key. Android installs an <em>update</em> only if it carries the same signature as the installed app, which is how your phone knows the update came from the same developer. A <strong>keystore</strong> is the password-protected file (<code>.jks</code>) holding that private key and its certificate.</p>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
+          <div class="p-3 rounded-lg bg-gray-950 border border-gray-800"><div class="font-bold text-amber-300">Keystore file</div><p class="text-gray-400 mt-1">The <code>.jks</code> container, protected by the <em>store password</em>.</p></div>
+          <div class="p-3 rounded-lg bg-gray-950 border border-gray-800"><div class="font-bold text-amber-300">Alias</div><p class="text-gray-400 mt-1">The name of one key inside it, e.g. <code>focusbank-upload</code>.</p></div>
+          <div class="p-3 rounded-lg bg-gray-950 border border-gray-800"><div class="font-bold text-amber-300">Key password</div><p class="text-gray-400 mt-1">Protects that key; usually the same as the store password.</p></div>
+          <div class="p-3 rounded-lg bg-gray-950 border border-gray-800"><div class="font-bold text-amber-300">Certificate</div><p class="text-gray-400 mt-1">The public half: your name, organisation and country, plus validity (10000 days ≈ 27 years).</p></div>
+        </div>
+
+        <h4 class="font-bold text-white text-sm pt-2">Debug key vs release key</h4>
+        <p class="text-xs text-gray-400">Android Studio and Gradle sign debug builds automatically with <code>~/.android/debug.keystore</code> (password <code>android</code>), which is the same on every developer's laptop. That's fine for testing and never accepted by Play. <strong class="text-red-300">Practical consequence for you:</strong> FocusBank on your phone is debug-signed, so a Play or release-signed version can't install over it. You'd have to uninstall first, which deletes its data. <em>Export a backup before switching.</em></p>
+
+        <h4 class="font-bold text-white text-sm pt-2">Play App Signing: two keys, not one</h4>
+        <svg viewBox="0 0 760 200" class="w-full max-w-3xl mx-auto" role="img" aria-label="Play App Signing flow">
+          <defs><marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10z" fill="#9ca3af"/></marker></defs>
+          <g font-family="ui-sans-serif,system-ui" font-size="13">
+            <rect x="10" y="40" width="160" height="70" rx="8" fill="#422006" stroke="#f59e0b"/>
+            <text x="90" y="66" text-anchor="middle" fill="#fde68a" font-weight="700">You</text>
+            <text x="90" y="86" text-anchor="middle" fill="#fcd34d" font-size="11">sign .aab with</text>
+            <text x="90" y="101" text-anchor="middle" fill="#fbbf24" font-size="11" font-weight="700">UPLOAD key</text>
+            <rect x="215" y="40" width="160" height="70" rx="8" fill="#1f2937" stroke="#6b7280"/>
+            <text x="295" y="70" text-anchor="middle" fill="#e5e7eb" font-weight="700">Play Console</text>
+            <text x="295" y="90" text-anchor="middle" fill="#9ca3af" font-size="11">checks upload signature</text>
+            <rect x="420" y="40" width="160" height="70" rx="8" fill="#172554" stroke="#3b82f6"/>
+            <text x="500" y="66" text-anchor="middle" fill="#bfdbfe" font-weight="700">Google</text>
+            <text x="500" y="86" text-anchor="middle" fill="#93c5fd" font-size="11">re-signs APKs with</text>
+            <text x="500" y="101" text-anchor="middle" fill="#60a5fa" font-size="11" font-weight="700">APP SIGNING key</text>
+            <rect x="625" y="40" width="125" height="70" rx="8" fill="#14532d" stroke="#22c55e"/>
+            <text x="687" y="70" text-anchor="middle" fill="#bbf7d0" font-weight="700">Phones</text>
+            <text x="687" y="90" text-anchor="middle" fill="#86efac" font-size="11">verify on update</text>
+            <path d="M170,75 H211" stroke="#9ca3af" stroke-width="1.6" marker-end="url(#ar3)"/>
+            <path d="M375,75 H416" stroke="#9ca3af" stroke-width="1.6" marker-end="url(#ar3)"/>
+            <path d="M580,75 H621" stroke="#9ca3af" stroke-width="1.6" marker-end="url(#ar3)"/>
+            <text x="90" y="140" text-anchor="middle" fill="#fca5a5" font-size="11">Lost? Play support can</text>
+            <text x="90" y="156" text-anchor="middle" fill="#fca5a5" font-size="11">reset the upload key</text>
+            <text x="500" y="140" text-anchor="middle" fill="#93c5fd" font-size="11">Never leaves Google:</text>
+            <text x="500" y="156" text-anchor="middle" fill="#93c5fd" font-size="11">you can't lose it</text>
+          </g>
+        </svg>
+        <p class="text-xs text-gray-400">New apps on Play must use App Bundles and Play App Signing, so your keystore is the <em>upload</em> key. Losing it is painful but recoverable. Without Play App Signing, for example if you only ever share APKs yourself, losing the key means <strong class="text-red-300">no one can ever update the app</strong>. Back it up.</p>
+
+        <h4 class="font-bold text-white text-sm pt-2">Signature schemes</h4>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs text-left">
+            <thead><tr class="text-gray-400 border-b border-gray-800"><th class="py-2 pr-3">Scheme</th><th class="py-2 pr-3">Needed from</th><th class="py-2">Notes</th></tr></thead>
+            <tbody class="text-gray-300 divide-y divide-gray-800">
+              <tr><td class="py-2 pr-3">v1 (JAR)</td><td class="py-2 pr-3">all versions</td><td class="py-2">Only matters below Android 7. FocusBank's minSdk is 26, so Gradle skips it.</td></tr>
+              <tr><td class="py-2 pr-3">v2</td><td class="py-2 pr-3">Android 7 (API 24)</td><td class="py-2">Signs the whole APK; what FocusBank's release APK uses</td></tr>
+              <tr><td class="py-2 pr-3">v3 / v3.1</td><td class="py-2 pr-3">Android 9 / 13</td><td class="py-2">Adds key rotation (move to a new key later)</td></tr>
+              <tr><td class="py-2 pr-3">v4</td><td class="py-2 pr-3">Android 11</td><td class="py-2">Separate file for fast incremental installs; extra, never on its own</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h4 class="font-bold text-white text-sm pt-2">Doing it for FocusBank</h4>
+        <ol class="text-xs text-gray-300 space-y-2 list-decimal list-inside">
+          <li>Create the key (once):
+            <div class="code-block p-3 mt-1 text-gray-300 overflow-x-auto">mkdir -p ~/keys<br>keytool -genkeypair -v -keystore ~/keys/focusbank-upload.jks -alias focusbank-upload -keyalg RSA -keysize 4096 -validity 10000</div></li>
+          <li>Inspect it any time: <code class="text-amber-300">keytool -list -v -keystore ~/keys/focusbank-upload.jks</code> shows the alias, validity and SHA-256 fingerprint.</li>
+          <li>Copy <code>keystore.properties.example</code> → <code>keystore.properties</code> and fill in the path and passwords. The file is git-ignored.</li>
+          <li><code class="text-amber-300">./gradlew bundleRelease</code> → <code>app/build/outputs/bundle/release/app-release.aab</code>. No "UNSIGNED" warning means it's signed.</li>
+          <li>Back up the <code>.jks</code> file and passwords outside this laptop, in a password manager or on an encrypted drive.</li>
+        </ol>
+      </div>
+
+      <!-- Part B -->
+      <div class="p-6 rounded-xl bg-gray-900 border border-gray-800 space-y-4">
+        <h3 class="text-lg font-bold text-white">Part B · The Play Store route</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2 text-xs">
+          <div class="p-3 rounded-lg bg-gray-950 border border-amber-800/60"><div class="text-amber-300 font-bold">1 · Account</div><div class="text-gray-400">US$25 once · ID check takes days</div></div>
+          <div class="p-3 rounded-lg bg-gray-950 border border-gray-800"><div class="text-blue-300 font-bold">2 · Create app</div><div class="text-gray-400">name, free/paid, policies</div></div>
+          <div class="p-3 rounded-lg bg-gray-950 border border-gray-800"><div class="text-blue-300 font-bold">3 · Listing</div><div class="text-gray-400">text, icon, graphic, screenshots</div></div>
+          <div class="p-3 rounded-lg bg-gray-950 border border-gray-800"><div class="text-blue-300 font-bold">4 · App content</div><div class="text-gray-400">privacy, data safety, declarations</div></div>
+          <div class="p-3 rounded-lg bg-gray-950 border border-red-800/60"><div class="text-red-300 font-bold">5 · Closed test</div><div class="text-gray-400">12 testers × 14 days</div></div>
+          <div class="p-3 rounded-lg bg-gray-950 border border-emerald-800/60"><div class="text-emerald-300 font-bold">6 · Production</div><div class="text-gray-400">review: days, maybe longer</div></div>
+        </div>
+        <p class="text-xs text-gray-400">The fee is the only required cost, and the 14-day closed test is the longest wait. Start the account early, because identity verification runs alongside everything else.</p>
+
+        <div class="space-y-3 text-xs">
+          <details class="p-4 rounded-lg bg-gray-950 border border-gray-800" open>
+            <summary class="font-bold text-white cursor-pointer">1. Developer account</summary>
+            <ul class="list-disc list-inside text-gray-400 mt-2 space-y-1">
+              <li>Sign up at play.google.com/console with a Google account. One-time fee of US$25, no yearly charge.</li>
+              <li><strong>Personal</strong> account: your legal name and ID are verified. <strong>Organisation</strong> account: needs a D-U-N-S number and is exempt from the closed-test rule below.</li>
+              <li>Your developer name and contact email appear on the store page.</li>
+            </ul>
+          </details>
+          <details class="p-4 rounded-lg bg-gray-950 border border-gray-800">
+            <summary class="font-bold text-white cursor-pointer">2–3. Create the app and its store listing</summary>
+            <div class="overflow-x-auto mt-2">
+              <table class="w-full text-left">
+                <thead><tr class="text-gray-500 border-b border-gray-800"><th class="py-1 pr-3">Asset</th><th class="py-1">Limit</th></tr></thead>
+                <tbody class="text-gray-300 divide-y divide-gray-800">
+                  <tr><td class="py-1 pr-3">App name</td><td class="py-1">≤ 30 characters</td></tr>
+                  <tr><td class="py-1 pr-3">Short description</td><td class="py-1">≤ 80 characters</td></tr>
+                  <tr><td class="py-1 pr-3">Full description</td><td class="py-1">≤ 4,000 characters</td></tr>
+                  <tr><td class="py-1 pr-3">App icon</td><td class="py-1">512 × 512 PNG, ≤ 1 MB</td></tr>
+                  <tr><td class="py-1 pr-3">Feature graphic</td><td class="py-1">1024 × 500 PNG or JPEG</td></tr>
+                  <tr><td class="py-1 pr-3">Phone screenshots</td><td class="py-1">2–8, each side 320–3840 px</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </details>
+          <details class="p-4 rounded-lg bg-gray-950 border border-gray-800">
+            <summary class="font-bold text-white cursor-pointer">4. App content forms (FocusBank's answers)</summary>
+            <ul class="list-disc list-inside text-gray-400 mt-2 space-y-1">
+              <li><strong>Privacy policy:</strong> a public URL. The draft exists; host it free on GitHub Pages or Google Sites.</li>
+              <li><strong>Data safety:</strong> required even when nothing is collected. FocusBank: no data collected or shared.</li>
+              <li><strong>Ads:</strong> no ads. <strong>App access:</strong> no login needed.</li>
+              <li><strong>Content rating:</strong> the IARC questionnaire (a few minutes).</li>
+              <li><strong>Target audience:</strong> adults only, which keeps FocusBank out of the stricter Families policy.</li>
+              <li><strong>Accessibility API declaration:</strong> explain the non-assistive use and link a short video showing the consent dialog, then an app being blocked.</li>
+              <li><strong>Foreground service declaration:</strong> justify the <code>specialUse</code> protection notice, usually with a video too.</li>
+            </ul>
+          </details>
+          <details class="p-4 rounded-lg bg-gray-950 border border-gray-800">
+            <summary class="font-bold text-white cursor-pointer">5. Testing tracks and the 12 × 14 rule</summary>
+            <div class="overflow-x-auto mt-2">
+              <table class="w-full text-left">
+                <thead><tr class="text-gray-500 border-b border-gray-800"><th class="py-1 pr-3">Track</th><th class="py-1 pr-3">Who</th><th class="py-1">Use it for</th></tr></thead>
+                <tbody class="text-gray-300 divide-y divide-gray-800">
+                  <tr><td class="py-1 pr-3">Internal testing</td><td class="py-1 pr-3">up to 100 invited people</td><td class="py-1">quick checks; available within minutes</td></tr>
+                  <tr><td class="py-1 pr-3">Closed testing</td><td class="py-1 pr-3">invited emails or a Google Group</td><td class="py-1">the mandatory test for new personal accounts</td></tr>
+                  <tr><td class="py-1 pr-3">Open testing</td><td class="py-1 pr-3">anyone can join</td><td class="py-1">public beta</td></tr>
+                  <tr><td class="py-1 pr-3">Production</td><td class="py-1 pr-3">everyone</td><td class="py-1">the real release; staged rollout optional</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="text-gray-400 mt-2">New personal accounts must run a closed test with <strong class="text-gray-200">at least 12 testers opted in for 14 days in a row</strong> before applying for production. Google then asks what you tested and what you changed. Pick testers on different phone brands.</p>
+          </details>
+          <details class="p-4 rounded-lg bg-gray-950 border border-gray-800">
+            <summary class="font-bold text-white cursor-pointer">6. Production, review and every update after</summary>
+            <ul class="list-disc list-inside text-gray-400 mt-2 space-y-1">
+              <li>Promote the tested build to Production. Review usually takes a few days, often longer for a first app or one using Accessibility.</li>
+              <li><strong>Staged rollout:</strong> release to 10–20% of users first and raise it if nothing breaks.</li>
+              <li>Every upload needs a <strong>higher <code>versionCode</code></strong> (FocusBank is at 8). <code>versionName</code> is just the label users see.</li>
+              <li>Every August Play raises the minimum <code>targetSdk</code>. Plan a yearly update.</li>
+            </ul>
+          </details>
+          <details class="p-4 rounded-lg bg-gray-950 border border-gray-800">
+            <summary class="font-bold text-white cursor-pointer">No budget yet? Ways to share the app for free</summary>
+            <ul class="list-disc list-inside text-gray-400 mt-2 space-y-1">
+              <li><strong>Signed APK by hand:</strong> <code>./gradlew assembleRelease</code> with your keystore, then share the file (users enable "install unknown apps"). Updates must use the same key.</li>
+              <li><strong>GitHub Releases:</strong> attach the APK to a release so friends always get the latest version.</li>
+              <li><strong>F-Droid:</strong> free, but requires the app to be open source, and F-Droid builds and signs it.</li>
+              <li><strong>Coming change:</strong> Google announced that, from 2026 to 2027 and country by country, apps installed on certified Android phones (even outside Play) must come from a verified developer. A free tier for hobbyists was promised. Check the current status before relying on sideloading.</li>
+            </ul>
+          </details>
+        </div>
+      </div>
+
+      <!-- Checklist -->
+      <div class="p-6 rounded-xl bg-gray-900 border border-gray-800 space-y-3">
+        <h3 class="text-lg font-bold text-white">Your FocusBank release checklist</h3>
+        <p class="text-xs text-gray-400">Ticks are saved in this browser only.</p>
+        <div id="publish-checklist" class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-300"></div>
+      </div>
+    </section>
+
   </main>
 
   <!-- JavaScript for Tabs & Simulator -->
@@ -1139,6 +1554,76 @@
         ],
         correct: 1,
         explanation: "Paused time and wall-clock time drift apart. The engine serves a penalty second on every tick while the Vault has time, so the moment tickPenalties() reports the last second is the correct and reboot-proof point to recheck the task (TaskDeadlineReceiver.onPenaltyExpired)."
+      },
+      {
+        id: 13,
+        category: "Threads & Races",
+        badgeColor: "bg-blue-900 text-blue-300",
+        question: "After the enforcement service moved to its own HandlerThread, a completed task's reward sometimes vanished. What was happening, and what fixed it?",
+        options: [
+          "Room deleted rows written from two threads; the fix was a second database.",
+          "Both threads read the balance, changed it and wrote it back, so one write overwrote the other (a read-modify-write race). A shared lock around every balance update fixed it.",
+          "SharedPreferences cannot be used from background threads.",
+          "The HandlerThread ran too fast and skipped seconds."
+        ],
+        correct: 1,
+        explanation: "Two threads doing read → change → write on the same value can interleave so that one update is lost. FocusBankStore wraps balance, reroll and penalty updates in synchronized(LOCK), so they happen one at a time."
+      },
+      {
+        id: 14,
+        category: "Database Migrations",
+        badgeColor: "bg-amber-900 text-amber-300",
+        question: "FocusBank 1.6 added an isPlan column. What happens on a phone that already has the version 1 database?",
+        options: [
+          "Room silently adds the column the next time the table is read.",
+          "Room sees schema version 1, runs MIGRATION_1_2 once (ALTER TABLE … ADD COLUMN … DEFAULT 0), then checks the result matches the new entity. Old tasks become commitments.",
+          "The app must be uninstalled and reinstalled.",
+          "Room deletes all tasks and starts a fresh v2 database."
+        ],
+        correct: 1,
+        explanation: "Room tracks the schema in PRAGMA user_version. When the code's version is higher, it runs the registered migrations in order and validates the result. Without a migration it would crash, or wipe data if destructive migration was allowed."
+      },
+      {
+        id: 15,
+        category: "App Signing",
+        badgeColor: "bg-amber-900 text-amber-300",
+        question: "With Play App Signing, what happens if you lose your upload keystore?",
+        options: [
+          "The app can never be updated again.",
+          "Google still holds the app signing key, so Play support can register a new upload key for you. It's painful but recoverable.",
+          "Google automatically generates a new upload key for every release.",
+          "Nothing: Play does not check the upload signature."
+        ],
+        correct: 1,
+        explanation: "The upload key only proves to Play that an upload came from you; Google re-signs what users download with an app signing key it keeps. Without Play App Signing (e.g. APKs you share yourself), a lost key really does mean no more updates."
+      },
+      {
+        id: 16,
+        category: "Publishing",
+        badgeColor: "bg-emerald-900 text-emerald-300",
+        question: "You have a new personal Play developer account. What must happen before FocusBank can go to Production?",
+        options: [
+          "Nothing; you can publish to Production on the first day.",
+          "A closed test with at least 12 testers opted in for 14 days in a row, then an application for production access.",
+          "An open beta with 1,000 users.",
+          "A paid review by a Google partner agency."
+        ],
+        correct: 1,
+        explanation: "Personal accounts created since late 2023 must prove real testing first. The bar was lowered from 20 to 12 testers; check the Play Console dashboard for the current number."
+      },
+      {
+        id: 17,
+        category: "Notifications",
+        badgeColor: "bg-purple-900 text-purple-300",
+        question: "Why can't FocusBank show its colourful logo as the small status-bar notification icon?",
+        options: [
+          "Colour icons are a paid Play feature.",
+          "Android uses only the alpha channel of the small icon and tints it, so it must be a single-colour silhouette. The colour logo can go in the large icon.",
+          "Vector drawables are not allowed in notifications.",
+          "The status bar only shows the app's name."
+        ],
+        correct: 1,
+        explanation: "Since Android 5 the small icon is treated as a mask. That's why FocusBank uses a white vault-and-check mark there and adds the full-colour logo via setLargeIcon()."
       }
     ];
 
@@ -1254,6 +1739,45 @@
       userAnswers = {};
       renderQuiz();
     }
+
+    const countBadge = document.getElementById('quiz-count-badge');
+    if (countBadge) countBadge.innerText = `${quizQuestions.length} Scenario Questions`;
+
+    // Release checklist (tab 11): ticks kept in this browser only
+    const publishSteps = [
+      'Create the upload keystore and back it up',
+      'Fill in keystore.properties and build a signed .aab',
+      'Export a FocusBank backup before switching from the debug build',
+      'Pay the US$25 fee and finish identity verification',
+      'Host the privacy policy at a public URL',
+      'Add a contact email to the in-app terms',
+      'Write store texts; make icon, feature graphic, screenshots',
+      'Data safety, content rating, target audience, ads, app access',
+      'Accessibility API and foreground-service declarations (with video)',
+      'Upload to Closed testing and invite at least 12 testers',
+      'Keep testers opted in for 14 days, then apply for production',
+      'Release to Production (staged rollout), then plan the yearly targetSdk update'
+    ];
+    function loadChecks() {
+      try { return JSON.parse(localStorage.getItem('focusbank-publish-checks') || '{}'); } catch (e) { return {}; }
+    }
+    function renderChecklist() {
+      const box = document.getElementById('publish-checklist');
+      if (!box) return;
+      const checks = loadChecks();
+      box.innerHTML = publishSteps.map((step, i) => `
+        <label class="flex items-start gap-2 p-2 rounded bg-gray-950 border border-gray-800 cursor-pointer">
+          <input type="checkbox" class="mt-1 accent-lime-500" data-step="${i}" ${checks[i] ? 'checked' : ''}>
+          <span class="${checks[i] ? 'line-through text-gray-500' : ''}">${i + 1}. ${step}</span>
+        </label>`).join('');
+      box.querySelectorAll('input[type=checkbox]').forEach(cb => cb.addEventListener('change', e => {
+        const next = loadChecks();
+        next[e.target.dataset.step] = e.target.checked;
+        try { localStorage.setItem('focusbank-publish-checks', JSON.stringify(next)); } catch (err) {}
+        renderChecklist();
+      }));
+    }
+    renderChecklist();
 
     // Call renderQuiz once DOM is ready
     setTimeout(renderQuiz, 100);
