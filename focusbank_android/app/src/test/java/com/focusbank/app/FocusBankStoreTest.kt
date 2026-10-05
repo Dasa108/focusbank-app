@@ -66,6 +66,22 @@ class FocusBankStoreTest {
         assertTrue(store.tasks().single().completed)
     }
 
+    @Test fun completingAPlanCreditsNothing() {
+        store.addTask(task("p", reward = 30, deadline = System.currentTimeMillis() + 30 * HOUR).copy(isPlan = true))
+        store.completeTask("p")
+        assertEquals(30 * 60L, store.balanceSeconds())
+        assertEquals(0, store.rerolls())
+        assertTrue(store.tasks().single().completed)
+    }
+
+    @Test fun anOpenPlanDoesNotBlockTheUnlockButAnOpenCommitmentDueTodayDoes() {
+        store.addTask(task("done")); store.completeTask("done")
+        store.addTask(task("plan").copy(isPlan = true))
+        assertTrue(store.dailyUsageUnlocked())
+        store.addTask(task("due-now", deadline = System.currentTimeMillis() - 1_000L))
+        assertFalse(store.dailyUsageUnlocked())
+    }
+
     @Test fun lateCompletionCreditsNothing() {
         store.addTask(task("late", deadline = System.currentTimeMillis() - 1_000L))
         store.completeTask("late")
@@ -161,8 +177,9 @@ class FocusBankStoreTest {
         assertTrue(store.dailyUsageUnlocked())
     }
 
-    @Test fun openTaskKeepsTheDayLocked() {
-        store.addTask(task("done")); store.addTask(task("open"))
+    @Test fun openTaskDueTodayKeepsTheDayLocked() {
+        // Already due, so it counts whatever the time of day (a +1h deadline is tomorrow after 11 pm).
+        store.addTask(task("done")); store.addTask(task("open", deadline = System.currentTimeMillis() - 1_000L))
         store.completeTask("done")
         assertFalse(store.dailyUsageUnlocked())
     }
@@ -178,6 +195,7 @@ class FocusBankStoreTest {
 
     @Test fun backupRoundTripsEverySetting() {
         store.addTask(task("a", priority = "HIGH", reward = 30))
+        store.addTask(task("plan").copy(isPlan = true))
         store.addBlockedApp("com.insta")
         store.setAppCategory("com.insta", "Social")
         store.setAppAllowance("com.insta", 15)
@@ -189,7 +207,9 @@ class FocusBankStoreTest {
         val restored = fx.newStore()
         restored.restoreJson(json)
 
-        assertEquals(listOf("a"), restored.tasks().map { it.id })
+        assertEquals(setOf("a", "plan"), restored.tasks().map { it.id }.toSet())
+        assertTrue(restored.tasks().single { it.id == "plan" }.isPlan)
+        assertFalse(restored.tasks().single { it.id == "a" }.isPlan)
         assertEquals(30 * 60L, restored.balanceSeconds())
         assertEquals(listOf("com.insta"), restored.blockedApps())
         assertEquals("Social", restored.appCategories()["com.insta"])

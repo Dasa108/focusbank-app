@@ -18,7 +18,9 @@ data class FocusTask(
     val penaltyMinutes: Int = 0,
     val penaltyProcessed: Boolean = false,
     val reminderMillis: Long = 0L,
-    val completedAt: Long = 0L
+    val completedAt: Long = 0L,
+    /** A schedule-only plan: reminders only, no reward or penalty, never holds back the daily unlock. */
+    val isPlan: Boolean = false
 )
 
 fun appLabel(context: android.content.Context, packageName: String): String = runCatching {
@@ -180,8 +182,9 @@ class FocusBankStore(
     }
     /** FR-3.8 plus the screen-free goal. Reads Room: call off the main thread. */
     fun dailyUsageUnlocked(): Boolean {
-        val today = dayKey(System.currentTimeMillis())
-        return TaskRules.dailyUnlock(tasks(), { dayKey(it) == today }, awayGoalMinutes(), awaySecondsToday())
+        val now = System.currentTimeMillis()
+        val today = dayKey(now)
+        return TaskRules.dailyUnlock(tasks(), { dayKey(it) == today }, TaskRules.endOfDay(now), awayGoalMinutes(), awaySecondsToday())
     }
 
     // --- Screen-free goal: minutes the screen must be off (after the day's first wake) ---
@@ -190,6 +193,8 @@ class FocusBankStore(
     fun recordAccessibilityConsent(now: Long = System.currentTimeMillis()) {
         preferences.edit().putLong("accessibility_consent_at", now).apply()
     }
+
+    fun hasAccessibilityConsent(): Boolean = preferences.getLong("accessibility_consent_at", 0L) > 0L
 
     fun awayGoalMinutes(): Int = preferences.getInt("away_goal_minutes", 0)
     fun setAwayGoalMinutes(minutes: Int) {
@@ -226,7 +231,7 @@ class FocusBankStore(
                 put("rewardMinutes", task.rewardMinutes); put("completed", task.completed)
                 put("deadlineMillis", task.deadlineMillis); put("penaltyMinutes", task.penaltyMinutes)
                 put("penaltyProcessed", task.penaltyProcessed); put("reminderMillis", task.reminderMillis)
-                put("completedAt", task.completedAt)
+                put("completedAt", task.completedAt); put("isPlan", task.isPlan)
             }
         }))
         root.put("appCategories", JSONObject(appCategories()))
@@ -254,7 +259,7 @@ class FocusBankStore(
             require(reward in 0..TaskRules.MAX_TASK_MINUTES) { "Task reward is out of range" }
             val penalty = value.optInt("penaltyMinutes")
             require(penalty in 0..TaskRules.MAX_TASK_MINUTES) { "Task penalty is out of range" }
-            restoredTasks += FocusTask(value.getString("id"), title, priority, reward, value.getBoolean("completed"), value.optLong("deadlineMillis"), penalty, value.optBoolean("penaltyProcessed"), value.optLong("reminderMillis"), value.optLong("completedAt"))
+            restoredTasks += FocusTask(value.getString("id"), title, priority, reward, value.getBoolean("completed"), value.optLong("deadlineMillis"), penalty, value.optBoolean("penaltyProcessed"), value.optLong("reminderMillis"), value.optLong("completedAt"), value.optBoolean("isPlan"))
         }
         dao.replaceTasks(restoredTasks.map(::toEntity))
         val editor = preferences.edit().putLong("balance_seconds", root.optLong("balanceSeconds", 0L).coerceAtLeast(0L)).putInt("penalty_rerolls", root.optInt("rerolls", 0))
@@ -415,6 +420,6 @@ class FocusBankStore(
         internal fun clearUsageCacheForTests() = usageCache.clear()
     }
 
-    private fun toEntity(task: FocusTask) = TaskEntity(task.id, task.title, task.priority, task.rewardMinutes, task.completed, task.deadlineMillis, task.penaltyMinutes, task.penaltyProcessed, task.reminderMillis, task.completedAt)
-    private fun fromEntity(task: TaskEntity) = FocusTask(task.id, task.title, task.priority, task.rewardMinutes, task.completed, task.deadlineMillis, task.penaltyMinutes, task.penaltyProcessed, task.reminderMillis, task.completedAt)
+    private fun toEntity(task: FocusTask) = TaskEntity(task.id, task.title, task.priority, task.rewardMinutes, task.completed, task.deadlineMillis, task.penaltyMinutes, task.penaltyProcessed, task.reminderMillis, task.completedAt, task.isPlan)
+    private fun fromEntity(task: TaskEntity) = FocusTask(task.id, task.title, task.priority, task.rewardMinutes, task.completed, task.deadlineMillis, task.penaltyMinutes, task.penaltyProcessed, task.reminderMillis, task.completedAt, task.isPlan)
 }

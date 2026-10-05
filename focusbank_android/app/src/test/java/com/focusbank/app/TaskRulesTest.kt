@@ -98,18 +98,59 @@ class TaskRulesTest {
 
     private val doneToday = task(completed = true, completedAt = now)
     private val isToday: (Long) -> Boolean = { it >= now - hour }
+    private val endOfToday = now + 2 * hour
 
-    @Test fun unlockNeedsEveryTaskDoneAndOneFinishedToday() {
-        assertTrue(TaskRules.dailyUnlock(listOf(doneToday), isToday, 0, 0L))
-        assertFalse(TaskRules.dailyUnlock(emptyList(), isToday, 0, 0L))
-        assertFalse(TaskRules.dailyUnlock(listOf(doneToday, task()), isToday, 0, 0L))
-        val doneYesterday = task(completed = true, completedAt = now - 30 * hour)
-        assertFalse(TaskRules.dailyUnlock(listOf(doneYesterday), isToday, 0, 0L))
+    private fun unlock(vararg tasks: FocusTask, goal: Int = 0, away: Long = 0L) =
+        TaskRules.dailyUnlock(tasks.toList(), isToday, endOfToday, goal, away)
+
+    @Test fun unlockNeedsEveryDueCommitmentDoneAndOneFinishedToday() {
+        assertTrue(unlock(doneToday))
+        assertFalse(unlock())
+        assertFalse("an open task due today blocks it", unlock(doneToday, task(deadline = now + hour)))
+        assertFalse("an overdue task blocks it", unlock(doneToday, task(deadline = now - 5 * hour)))
+        assertFalse(unlock(task(completed = true, completedAt = now - 30 * hour)))
+    }
+
+    @Test fun commitmentsDueOnALaterDayDoNotHoldBackToday() {
+        assertTrue(unlock(doneToday, task(deadline = endOfToday + 1)))
+        assertTrue(unlock(doneToday, task(deadline = now + 72 * hour)))
+    }
+
+    @Test fun commitmentWithoutADeadlineStillCounts() {
+        assertFalse(unlock(doneToday, task(deadline = 0L)))
     }
 
     @Test fun unlockWaitsForScreenFreeGoal() {
-        assertFalse(TaskRules.dailyUnlock(listOf(doneToday), isToday, awayGoalMinutes = 120, awaySecondsToday = 119 * 60L))
-        assertTrue(TaskRules.dailyUnlock(listOf(doneToday), isToday, awayGoalMinutes = 120, awaySecondsToday = 120 * 60L))
+        assertFalse(unlock(doneToday, goal = 120, away = 119 * 60L))
+        assertTrue(unlock(doneToday, goal = 120, away = 120 * 60L))
+    }
+
+    // --- Plans (schedule-only tasks) ---
+
+    private fun plan(deadline: Long = now + hour, completed: Boolean = false, completedAt: Long = 0L) =
+        task(deadline = deadline, completed = completed, completedAt = completedAt).copy(id = "plan-$deadline", isPlan = true)
+
+    @Test fun plansNeverPayOrGrantRerolls() {
+        assertEquals(0L, TaskRules.rewardSeconds(plan(), completedAt = now))
+        assertEquals(0, TaskRules.earnedMinutes(plan(completed = true, completedAt = now)))
+        assertFalse(TaskRules.grantsReroll(plan(deadline = now + 48 * hour), completedAt = now))
+    }
+
+    @Test fun openPlansNeverHoldBackTheUnlock() {
+        assertTrue(unlock(doneToday, plan(deadline = now + hour)))
+        assertTrue(unlock(doneToday, plan(deadline = now - 5 * hour)))
+    }
+
+    @Test fun aFinishedPlanDoesNotCountAsTodaysWork() {
+        assertFalse("a junk plan cannot unlock the day", unlock(plan(completed = true, completedAt = now)))
+    }
+
+    @Test fun endOfDayIsTheLastMillisecondOfThatDay() {
+        val cal = java.util.Calendar.getInstance().apply { set(2026, 9, 5, 14, 30, 0) }
+        val end = java.util.Calendar.getInstance().apply { timeInMillis = TaskRules.endOfDay(cal.timeInMillis) }
+        assertEquals(5, end.get(java.util.Calendar.DAY_OF_MONTH))
+        assertEquals(23, end.get(java.util.Calendar.HOUR_OF_DAY))
+        assertEquals(6, java.util.Calendar.getInstance().apply { timeInMillis = TaskRules.endOfDay(cal.timeInMillis) + 1 }.get(java.util.Calendar.DAY_OF_MONTH))
     }
 
     // --- Sorting (FR-1.2) ---

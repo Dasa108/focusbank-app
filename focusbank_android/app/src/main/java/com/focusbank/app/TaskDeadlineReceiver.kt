@@ -24,11 +24,13 @@ class TaskDeadlineReceiver : BroadcastReceiver() {
         if (task.completed) return
 
         if (intent.getBooleanExtra("reminder", false)) {
-            showNotification(context, "Task deadline approaching", "${task.title} is due soon.", taskId)
+            if (task.isPlan) showNotification(context, "Coming up", "${task.title} is scheduled soon.", taskId)
+            else showNotification(context, "Task deadline approaching", "${task.title} is due soon.", taskId)
             return
         }
 
-        if (task.deadlineMillis <= System.currentTimeMillis() && !task.penaltyProcessed) {
+        // Plans only remind; they never penalize.
+        if (!task.isPlan && task.deadlineMillis <= System.currentTimeMillis() && !task.penaltyProcessed) {
             applyPenalty(context, store, task, recheck = false)
             store.addTask(task.copy(penaltyProcessed = true))
         }
@@ -40,7 +42,7 @@ class TaskDeadlineReceiver : BroadcastReceiver() {
             val taskId = store.penaltyTask(packageName)
             if (taskId.isEmpty()) return
             val task = store.tasks().firstOrNull { it.id == taskId } ?: return
-            if (task.completed) return
+            if (task.completed || task.isPlan) return
             applyPenalty(context, store, task, recheck = true)
         }
 
@@ -94,12 +96,15 @@ class TaskDeadlineReceiver : BroadcastReceiver() {
             cancel(context, task.id)
             if (task.deadlineMillis <= 0L) return
             val alarmManager = context.getSystemService(AlarmManager::class.java)
-            val penaltyIntent = PendingIntent.getBroadcast(
-                context, task.id.hashCode(), Intent(context, TaskDeadlineReceiver::class.java).apply {
-                    putExtra("task_id", task.id)
-                }, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, task.deadlineMillis, penaltyIntent)
+            // Plans have no deadline penalty, so only their reminder is scheduled.
+            if (!task.isPlan) {
+                val penaltyIntent = PendingIntent.getBroadcast(
+                    context, task.id.hashCode(), Intent(context, TaskDeadlineReceiver::class.java).apply {
+                        putExtra("task_id", task.id)
+                    }, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, task.deadlineMillis, penaltyIntent)
+            }
             val reminderTime = task.reminderMillis.takeIf { it > System.currentTimeMillis() && it < task.deadlineMillis }
                 ?: (task.deadlineMillis - 60L * 60L * 1000L)
             if (reminderTime > System.currentTimeMillis()) {

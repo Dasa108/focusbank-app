@@ -2,13 +2,13 @@ package com.focusbank.app
 
 /**
  * Terms & conditions shown from the top-right menu. Plain data so the wording can be edited
- * without touching UI code. DRAFT: fill in the bracketed placeholders and have the text reviewed
- * before publishing.
+ * without touching UI code. DRAFT: add a contact address and have the text reviewed before publishing.
  */
 object LegalText {
     const val TERMS_EFFECTIVE_DATE = "1 October 2026"
-    const val CONTACT = "[developer contact email]"
-    const val GOVERNING_LAW = "[country / state]"
+    /** Left blank until a support address exists; the contact sentence is omitted while empty. */
+    const val CONTACT = ""
+    const val GOVERNING_LAW = "India"
 
     data class Section(val title: String, val body: String)
 
@@ -51,7 +51,9 @@ object LegalText {
             "6. No guarantee that blocking always works",
             "FocusBank is provided \"as is\". Android, battery savers or your phone's manufacturer may stop or " +
                 "delay the service, reminders and deadline alarms, and blocking may not work on every device or " +
-                "Android version. Time counts, penalties and rewards are best-effort and may be inaccurate."
+                "Android version. Time counts, penalties and rewards are best-effort and may be inaccurate. Some UPI, " +
+                "payment and banking apps refuse to work while any Accessibility service is on; turn FocusBank off in " +
+                "Settings while you use them."
         ),
         Section(
             "7. Not medical advice",
@@ -71,8 +73,9 @@ object LegalText {
                 "Continuing to use FocusBank after an update means you accept the new terms."
         ),
         Section(
-            "10. Governing law and contact",
-            "These terms are governed by the laws of $GOVERNING_LAW. Questions about FocusBank or these terms: $CONTACT."
+            if (CONTACT.isBlank()) "10. Governing law" else "10. Governing law and contact",
+            "These terms are governed by the laws of $GOVERNING_LAW." +
+                if (CONTACT.isBlank()) "" else " Questions about FocusBank or these terms: $CONTACT."
         )
     )
 }

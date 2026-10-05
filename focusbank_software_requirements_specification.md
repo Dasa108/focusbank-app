@@ -4,12 +4,20 @@
 ---
 
 ### Document Control
-- **Document Version:** 1.5.0
+- **Document Version:** 1.6.0
 - **Author:** System Architecture & Product Engineering
 - **Status:** Release Candidate / Implementation Baseline
 - **Target OS:** Android (Minimum SDK: API 26 / Android 8.0 Oreo; Target/Compile SDK: API 36 / Android 16)
 
 ### Document Update Summary
+
+Version 1.6.0 adds **plans**: schedule-only tasks with a reminder but no reward, penalty or reroll, which never hold back the daily unlock (FR-1.5). Under FR-3.8, only commitments due today or overdue now count. The task table gains an `isPlan` column (Room v1 → v2 migration). Review fixes:
+- An edited deadline can no longer be moved into the past, which used to fire its penalty at once.
+- Protection can't be switched off for an app with an active penalty.
+- Per-app allowances are capped at 1,440 minutes.
+- Backups also exclude the database's `-wal`/`-shm`/`-journal` files.
+- The Vault and the consent dialog explain how to pay with UPI apps, which may refuse payments while an Accessibility service is on (FR-5.8).
+- The terms name Indian law and drop the contact line until an address exists.
 
 Version 1.5.0 prepares for Google Play. It targets and compiles against API 36 (AGP 8.9.1, Gradle 8.11.1) with edge-to-edge layouts, and it shows an in-app Accessibility disclosure with a consent step before opening Accessibility settings. `QUERY_ALL_PACKAGES` is replaced by `<queries>` entries for launcher and home intents. The verse card and all verse text are removed. Android 10–13 now start the enforcement notification as a plain foreground service, because the special-use type only exists from Android 14.
 
@@ -137,7 +145,8 @@ FocusBank requires high-privilege Android permissions to enforce distraction blo
 - **FR-1.1c:** Users shall edit title, priority, reward, deadline date, and deadline time after creation.
 - **FR-1.2:** System shall allow inline sorting by Eisenhower Matrix, Priority, and Due Date. For the Eisenhower sort, importance means `HIGH` or `MEDIUM` priority and urgency means a deadline within 24 hours. Quadrants are ordered Do, Schedule, Delegate, Drop, with the deadline breaking ties.
 - **FR-1.3:** On task completion, the system marks the task `COMPLETED` and saves the timestamp. The reward minutes are credited only when the task is completed on or before its deadline. A late completion earns nothing, but it still stops further penalty rechecks for that task (FR-3.10).
-- **FR-1.4:** Tasks completed at least 24 hours before their deadline shall grant one penalty reroll.
+- **FR-1.4:** Commitments completed at least 24 hours before their deadline shall grant one penalty reroll.
+- **FR-1.5 (Plans):** A task is either a *commitment* (the default: reward, penalty and deadline rules above) or a *plan*. A plan is a schedule-only entry with a time, a priority and an optional reminder. It has no reward, no penalty and no reroll, and its time schedules only the reminder. It can be marked done or deleted while open, it never holds back the daily unlock, and finishing one does not count as "work done today". Its kind is fixed when it is created. Plans show as "◇" in the Schedule matrix.
 
 ### 4.2 Module 2: The Allowance Vault ("Bank")
 - **FR-2.1:** The Vault maintains `active_balance_seconds` in local application storage; encryption and biometric protection are release follow-up requirements.
@@ -163,7 +172,7 @@ FocusBank requires high-privilege Android permissions to enforce distraction blo
 - **FR-3.5:** A penalty shall be stored as remaining seconds. It shall count down in real time, one second per second, whenever the general Vault holds more than 0 seconds, whether or not the phone is in use. It shall pause while the Vault is empty and resume as soon as time is added. Serving a penalty does not take time from the Vault, and the penalized app stays locked until it is served. Example: with 60 minutes in the Vault and a 20-minute penalty on Instagram, Instagram unlocks 20 minutes later and the Vault still holds 60 minutes, minus anything spent in other apps.
 - **FR-3.6:** When a pending penalty is discovered at app launch, the UI shall animate a dice roll and end by showing the selected protected app and remaining penalty countdown.
 - **FR-3.7:** The Vault shall show the selected app and a live penalty countdown, shown as paused while the Vault is empty.
-- **FR-3.8:** When all stored tasks are complete, at least one was completed today, and the screen-free goal (FR-5.6) is met or not set, allowance enforcement shall be bypassed for the rest of that day. Penalties still apply.
+- **FR-3.8:** Allowance enforcement shall be bypassed for the rest of the day when three conditions hold. First, every commitment due today or already overdue (or with no deadline) is complete. Second, at least one commitment was completed today. Third, the screen-free goal (FR-5.6) is met or not set. Plans never count, and commitments due on a later day do not hold back today's unlock. Penalties still apply.
 - **FR-3.9:** The dice reveal shall be shown once per unique penalty instance and shall not repeat on every app launch while that same penalty remains active.
 - **FR-3.10:** When a penalty's countdown reaches zero, the enforcement service shall recheck the associated task. Only if the task is still incomplete may another protected-app penalty be created or a reroll consumed. A reroll is never consumed when no penalty would apply (no protected apps, or zero penalty minutes).
 - **FR-3.11:** The lockout overlay shall identify the restricted package, show a live `HH:MM:SS` countdown, explain the lockout state, and provide a route back to FocusBank.
@@ -181,7 +190,8 @@ FocusBank requires high-privilege Android permissions to enforce distraction blo
 - **FR-5.2:** The Schedule screen shall show seven days as rows and eight three-hour windows as columns.
 - **FR-5.3:** Tasks shall appear in the matrix cell matching their deadline window, including exact due time.
 - **FR-5.4:** Schedule task text shall be color-coded by priority: high red, medium yellow, low green.
-- **FR-5.7 (Menu and terms):** The top-right "⋮" menu shall offer the Light and Dark themes and a Terms & conditions screen. The terms text lives in `LegalText.kt`, and its bracketed placeholders for contact and governing law must be filled in before release.
+- **FR-5.7 (Menu and terms):** The top-right "⋮" menu shall offer the Light and Dark themes and a Terms & conditions screen. The terms text lives in `LegalText.kt`. Governing law is India, and the contact line is omitted until an address is set in `LegalText.CONTACT`.
+- **FR-5.8 (Paying with UPI apps):** While blocking is on, the Vault shall show a note that some UPI and banking apps refuse payments while an Accessibility service is on. The note shall tell the user to turn FocusBank off in Settings › Accessibility › FocusBank while paying and to turn it back on with "Enable blocking". The consent dialog and the terms shall say the same. There is deliberately no in-app off switch, so turning blocking off always takes the Settings route. Once consent has been recorded, "Enable blocking" opens FocusBank's page in Accessibility settings directly.
 - **FR-5.6 (Screen-free goal):** Users may set a daily goal of 0 to 960 minutes with the screen off; 0 turns the goal off. Screen-off time counts only after the day's first screen-on, so overnight sleep is excluded, and only while the enforcement service is running. The Vault shall show today's progress. The goal is included in backups.
 - **FR-5.5:** The Vault shall show current balance, minutes earned today (on-time completions only), protected-app minutes spent today, and per-app usage summaries labelled with app names. The Vault screen shall scroll so every section is reachable.
 
@@ -288,7 +298,7 @@ CREATE TABLE usage_records (
 3. **Hardware Battery Testing:** Run benchmark on physical device for 24-hour cycle with 20+ app swaps to verify minimal power drain.
 
 ### 8.3 Current Release Candidate
-- **Version:** 1.5.0 (versionCode 6), targetSdk 36
+- **Version:** 1.6.0 (versionCode 8), targetSdk 36
 - **Debug APK:** `app/build/outputs/apk/debug/app-debug.apk`
 - **Unsigned Release APK:** `app/build/outputs/apk/release/app-release-unsigned.apk`
 - **Unsigned Release App Bundle:** `app/build/outputs/bundle/release/app-release.aab`
@@ -308,7 +318,7 @@ CREATE TABLE usage_records (
 
 These requirements or behaviours still differ from the intent above:
 
-1. **FR-3.8 daily unlock.** *Partly addressed in 1.3.0:* with a screen-free goal set, a trivial task no longer unlocks the day until the goal is met. With the goal at 0 (the default), the original loophole remains. Screen-off time is only recorded while the enforcement service runs, and the goal can be lowered at any time.
+1. **FR-3.8 daily unlock.** *Partly addressed in 1.3.0 and 1.6.0:* with a screen-free goal set, a trivial task no longer unlocks the day until the goal is met, and plans can never unlock it. With the goal at 0 (the default), a trivial *commitment* still can. Screen-off time is only recorded while the enforcement service runs, and the goal can be lowered at any time.
 2. **Self-granted rewards.** Reward minutes are user-editable (up to 1,440). A task created with a deadline more than 24 hours away and completed at once also earns a reroll (FR-1.4). There is no minimum task age or cooldown.
 3. **Deadline edits avoid penalties.** FR-1.1c lets an unexpired deadline be moved later without limit.
 4. **Restore and reset as escape hatches.** Importing an older backup restores its balance and does not clear active penalties. A reset clears penalties. Both are local-only and unauthenticated (see NFR-5).

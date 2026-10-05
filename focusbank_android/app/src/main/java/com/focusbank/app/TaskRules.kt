@@ -17,14 +17,22 @@ object TaskRules {
         task.deadlineMillis > 0L && completedAt > task.deadlineMillis
 
     /** Spec §1.3: only tasks completed in time yield minutes. */
+    /** Plans never pay out; otherwise they would be a free way to mint minutes. */
     fun rewardSeconds(task: FocusTask, completedAt: Long): Long =
-        if (isLate(task, completedAt)) 0L else task.rewardMinutes * 60L
+        if (task.isPlan || isLate(task, completedAt)) 0L else task.rewardMinutes * 60L
 
-    fun earnedMinutes(task: FocusTask): Int = if (task.completed && !isLate(task)) task.rewardMinutes else 0
+    fun earnedMinutes(task: FocusTask): Int = if (task.completed && !task.isPlan && !isLate(task)) task.rewardMinutes else 0
 
-    /** FR-1.4: finishing at least 24 hours early grants a reroll. */
+    /** FR-1.4: finishing a commitment at least 24 hours early grants a reroll. */
     fun grantsReroll(task: FocusTask, completedAt: Long): Boolean =
-        task.deadlineMillis > 0L && task.deadlineMillis - completedAt >= DAY_MILLIS
+        !task.isPlan && task.deadlineMillis > 0L && task.deadlineMillis - completedAt >= DAY_MILLIS
+
+    /** Last millisecond of the calendar day containing [time], in the device's time zone. */
+    fun endOfDay(time: Long): Long = java.util.Calendar.getInstance().apply {
+        timeInMillis = time
+        set(java.util.Calendar.HOUR_OF_DAY, 23); set(java.util.Calendar.MINUTE, 59)
+        set(java.util.Calendar.SECOND, 59); set(java.util.Calendar.MILLISECOND, 999)
+    }.timeInMillis
 
     /**
      * One second of a penalty (FR-3.5). A penalty counts down in real time while the Vault holds
@@ -50,13 +58,15 @@ object TaskRules {
     }
 
     /**
-     * FR-3.8 daily unlock: every stored task is done, at least one was finished today, and the
-     * screen-free goal (if set) has been met.
+     * FR-3.8 daily unlock: every commitment that is due by [dueBy] (today or overdue, or with no
+     * deadline) is done, at least one commitment was finished today, and the screen-free goal (if
+     * set) has been met. Plans never count, and commitments due on a later day don't hold it back.
      */
-    fun dailyUnlock(tasks: List<FocusTask>, isToday: (Long) -> Boolean, awayGoalMinutes: Int, awaySecondsToday: Long): Boolean {
-        val tasksDone = tasks.isNotEmpty() && tasks.all { it.completed } &&
-            tasks.any { it.completedAt > 0L && isToday(it.completedAt) }
-        return tasksDone && awayGoalMet(awayGoalMinutes, awaySecondsToday)
+    fun dailyUnlock(tasks: List<FocusTask>, isToday: (Long) -> Boolean, dueBy: Long, awayGoalMinutes: Int, awaySecondsToday: Long): Boolean {
+        val commitments = tasks.filterNot { it.isPlan }
+        val dueOpen = commitments.any { !it.completed && (it.deadlineMillis <= 0L || it.deadlineMillis <= dueBy) }
+        val finishedToday = commitments.any { it.completed && it.completedAt > 0L && isToday(it.completedAt) }
+        return !dueOpen && finishedToday && awayGoalMet(awayGoalMinutes, awaySecondsToday)
     }
 
     fun awayGoalMet(goalMinutes: Int, awaySecondsToday: Long): Boolean =

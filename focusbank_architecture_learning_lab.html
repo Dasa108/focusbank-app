@@ -74,7 +74,7 @@
       <div>
         <div class="flex flex-wrap items-center justify-center md:justify-start gap-2 mb-2">
           <span class="badge bg-blue-900/60 text-blue-300 border border-blue-700">FocusBank Case Study</span>
-          <span class="badge bg-lime-900/60 text-lime-300 border border-lime-700">v1.5.0</span>
+          <span class="badge bg-lime-900/60 text-lime-300 border border-lime-700">v1.6.0</span>
           <span class="badge bg-emerald-900/60 text-emerald-300 border border-emerald-700">Targets Android 16</span>
           <span class="badge bg-purple-900/60 text-purple-300 border border-purple-700">Beginner Friendly</span>
         </div>
@@ -709,6 +709,13 @@
             </tbody>
           </table>
         </div>
+        <h3 class="text-base font-bold text-white pt-2">Added in 1.6</h3>
+        <ul class="text-xs text-gray-300 space-y-1.5 list-disc list-inside">
+          <li><strong>Plans</strong>: schedule-only tasks with a reminder and no reward or penalty. They never hold back the daily unlock. The database moved to v2 with a tested migration.</li>
+          <li>The daily unlock now counts only commitments due <strong>today or overdue</strong>.</li>
+          <li>Fixes: deadlines can't be edited into the past, a penalized app's protection can't be switched off, per-app allowances are capped, and the database's WAL files are excluded from backup.</li>
+          <li>A <strong>UPI payment</strong> note explains turning blocking off in Settings while paying. There's deliberately no in-app off switch.</li>
+        </ul>
         <h3 class="text-base font-bold text-white pt-2">Play readiness in 1.5</h3>
         <ul class="text-xs text-gray-300 space-y-1.5 list-disc list-inside">
           <li>Targets and compiles against <strong>API 36</strong>, with edge-to-edge screens and system-bar icons that follow the app theme.</li>
@@ -749,7 +756,7 @@
           <li>Restore and reset can escape penalties. FR-3.2 anti-circumvention is not built.</li>
           <li>Alarms are inexact. The Android shell (<code>AppMonitorService</code>) is only tested on a device, not in unit tests.</li>
         </ul>
-        <p class="text-xs text-gray-500">Full list: <code>focusbank_software_requirements_specification.md</code> §9 · Decisions: <code>decisions.md</code> ADR-004 to ADR-013.</p>
+        <p class="text-xs text-gray-500">Full list: <code>focusbank_software_requirements_specification.md</code> §9 · Decisions: <code>decisions.md</code> ADR-004 to ADR-016.</p>
       </div>
     </section>
   </main>

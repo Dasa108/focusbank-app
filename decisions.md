@@ -62,3 +62,11 @@ Short architecture decision records. Newest last.
 ## ADR-014 — Notification identity and in-app terms (v1.5.1)
 **Context:** Small notification icons must be single-colour. The ring-and-arc mark read as a clock at 24 dp, which looked like the retired clock logo.
 **Decision:** The status-bar icon becomes a solid vault door with its bolts and check cut out (even-odd path). All notifications also use the brand green accent and the full-colour launcher logo as the large icon (`withFocusBankBranding`). The top-bar theme button becomes a "⋮" menu with Light/Dark and Terms & conditions; the text is in `LegalText.kt`.
+
+## ADR-015 — Plans, and only today's commitments gate the unlock (v1.6.0)
+**Context:** Every task was a commitment, so scheduling something for next week held back today's daily unlock. That pushed the user toward junk tasks just to unlock the day.
+**Decision:** Add a plan kind (`isPlan`, Room v1 → v2 with `ALTER TABLE … DEFAULT 0`). Plans get reminders only: no reward, penalty or reroll, and no deadline alarm. `TaskRules.dailyUnlock` counts only commitments due by the end of today, and only a finished *commitment* counts as today's work, so plans can't mint minutes or unlock the day. A task's kind is fixed at creation, so a missed commitment can't be turned into a plan to escape its penalty.
+
+## ADR-016 — UPI apps: explain the Settings route, no in-app off switch (v1.6.0)
+**Context:** UPI and banking apps refuse payments while an Accessibility service they don't trust is on. Options considered: an in-app on/off switch (via `disableSelf()`), limiting the service's `packageNames`, and dropping window-content access.
+**Decision:** Rejected the in-app switch because it makes turning protection off too easy to misuse. FocusBank instead explains the situation in the Vault, the consent dialog and the terms, and the user turns it off in Settings. After consent, "Enable blocking" deep-links to FocusBank's Accessibility page so turning it back on is quick. Limiting `packageNames` remains an option if a specific UPI app turns out to object only to services that can see it.

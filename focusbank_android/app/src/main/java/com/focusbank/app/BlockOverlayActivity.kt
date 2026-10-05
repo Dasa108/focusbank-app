@@ -66,7 +66,7 @@ class BlockOverlayActivity : ComponentActivity() {
                 LaunchedEffect(Unit) { tasks = withContext(Dispatchers.IO) { store.tasks() } }
                 val penaltyTask = tasks.firstOrNull { it.id == store.penaltyTask(packageName) }
                 // Spec §7.1: spotlight the most important open task, soonest deadline first.
-                val spotlight = tasks.filter { !it.completed && !TaskRules.isLate(it, System.currentTimeMillis()) }
+                val spotlight = tasks.filter { !it.completed && !it.isPlan && !TaskRules.isLate(it, System.currentTimeMillis()) }
                     .minWithOrNull(compareBy({ TaskRules.priorityRank(it.priority) }, { it.deadlineMillis }))
 
                 LaunchedEffect(Unit) {

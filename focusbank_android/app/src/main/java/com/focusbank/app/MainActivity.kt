@@ -190,6 +190,11 @@ fun FocusBankApp(store: FocusBankStore, darkTheme: Boolean, onToggleTheme: () ->
     val context = LocalContext.current
     var installedApps by remember { mutableStateOf<List<InstalledApp>>(emptyList()) }
     var accessibilityEnabled by remember { mutableStateOf(isEnforcementRunning(context)) }
+    // Consent is asked once (Play policy); after that, "Enable blocking" goes straight to Settings.
+    // There is deliberately no in-app off switch: turning blocking off always goes through Settings.
+    val enableBlocking = {
+        if (store.hasAccessibilityConsent()) openAccessibilitySettings(context) else showAccessibilityDisclosure = true
+    }
 
     LaunchedEffect(context) {
         installedApps = withContext(Dispatchers.IO) { loadInstalledApps(context) }
@@ -248,7 +253,7 @@ fun FocusBankApp(store: FocusBankStore, darkTheme: Boolean, onToggleTheme: () ->
             onAgree = {
                 showAccessibilityDisclosure = false
                 store.recordAccessibilityConsent()
-                context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                openAccessibilitySettings(context)
             },
             onDecline = { showAccessibilityDisclosure = false }
         )
@@ -319,7 +324,7 @@ fun FocusBankApp(store: FocusBankStore, darkTheme: Boolean, onToggleTheme: () ->
             when (selectedTab) {
                 0 -> VaultScreen(
                     balance = balance,
-                    pendingTasks = tasks.count { !it.completed },
+                    pendingTasks = tasks.count { !it.completed && !it.isPlan },
                     earnedToday = tasks.filter { it.completed && it.completedAt >= startOfToday() }.sumOf { TaskRules.earnedMinutes(it) },
                     usageToday = usageToday,
                     activePenalties = activePenalties,
@@ -347,7 +352,7 @@ fun FocusBankApp(store: FocusBankStore, darkTheme: Boolean, onToggleTheme: () ->
                     accessibilityEnabled = accessibilityEnabled,
                     // Play policy: prominent in-app disclosure and consent before sending the user to
                     // Accessibility settings.
-                    onEnableAccessibility = { showAccessibilityDisclosure = true },
+                    onEnableAccessibility = enableBlocking,
                     onReduceAllowance = { minutes ->
                         store.reduceAllowance(minutes)
                         balance = store.balanceSeconds()
@@ -356,10 +361,11 @@ fun FocusBankApp(store: FocusBankStore, darkTheme: Boolean, onToggleTheme: () ->
                 1 -> TaskScreen(
                     tasks = tasks,
                     rerolls = store.rerolls(),
-                    onAdd = { title, priority, reward, deadlineMillis, penaltyMinutes, reminderMillis ->
+                    onAdd = { title, priority, reward, deadlineMillis, penaltyMinutes, reminderMillis, isPlan ->
                         val task = FocusTask(
-                            UUID.randomUUID().toString(), title, priority, reward, false,
-                            deadlineMillis, penaltyMinutes, false, reminderMillis
+                            UUID.randomUUID().toString(), title, priority,
+                            if (isPlan) 0 else reward, false, deadlineMillis,
+                            if (isPlan) 0 else penaltyMinutes, false, reminderMillis, isPlan = isPlan
                         )
                         TaskDeadlineReceiver.schedule(context, task)
                         io({ store.addTask(task); store.tasks() }) { tasks = it }
@@ -383,6 +389,7 @@ fun FocusBankApp(store: FocusBankStore, darkTheme: Boolean, onToggleTheme: () ->
                 2 -> ScheduleScreen(tasks)
                 3 -> AppsScreen(
                     apps = installedApps,
+                    penalizedApps = activePenalties.map { it.packageName }.toSet(),
                     blockedApps = blockedApps,
                     appCategories = appCategories,
                     appAllowances = appAllowances,
@@ -457,6 +464,8 @@ private fun AccessibilityDisclosureDialog(onAgree: () -> Unit, onDecline: () -> 
                 Text("It uses this only to count your allowance, apply penalties and track screen-free time. " +
                     "It does not read what you type or what is shown inside other apps. Everything stays on this phone: " +
                     "nothing is uploaded or shared.")
+                Text("Paying with UPI: some UPI and banking apps refuse payments while any Accessibility service is on. " +
+                    "Turn FocusBank off in Settings › Accessibility › FocusBank while you pay, then turn it back on from the Vault.")
                 Text("You can turn it off at any time in Settings › Accessibility › FocusBank.", style = MaterialTheme.typography.bodySmall)
             }
         },
@@ -565,6 +574,20 @@ private fun VaultScreen(
                 Text(if (accessibilityEnabled) "Active: FocusBank can monitor selected apps." else "Not active: enable Accessibility access to block selected apps.")
                 if (!accessibilityEnabled) {
                     FilledTonalButton(onClick = onEnableAccessibility) { Text("Enable blocking") }
+                }
+            }
+        }
+        if (accessibilityEnabled) {
+            // UPI and banking apps often block payments while an Accessibility service is on. There is
+            // deliberately no in-app off switch (too easy to misuse): turning off goes through Settings.
+            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Paying with a UPI app?", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Some UPI and banking apps refuse payments while blocking is on. Turn FocusBank off in " +
+                            "Settings › Accessibility › FocusBank while you pay, then tap \"Enable blocking\" here to turn it back on.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
             }
         }
@@ -704,6 +727,15 @@ private fun isAccessibilityEnabled(context: Context): Boolean {
     }
 }
 
+/** Opens FocusBank's own page in Accessibility settings where supported, else the Accessibility list. */
+private fun openAccessibilitySettings(context: Context) {
+    val component = ComponentName(context, AppMonitorService::class.java).flattenToString()
+    val details = Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
+        .putExtra(Intent.EXTRA_COMPONENT_NAME, component)
+    val opened = runCatching { context.startActivity(details) }.isSuccess
+    if (!opened) context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+}
+
 private fun isEnforcementRunning(context: Context): Boolean {
     val preferences = context.getSharedPreferences("focusbank", Context.MODE_PRIVATE)
     return isAccessibilityEnabled(context) && System.currentTimeMillis() - preferences.getLong("service_heartbeat", 0L) < 10_000L
@@ -723,12 +755,13 @@ private fun MetricCard(value: String, label: String, modifier: Modifier) {
 private fun TaskScreen(
     tasks: List<FocusTask>,
     rerolls: Int,
-    onAdd: (String, String, Int, Long, Int, Long) -> Unit,
+    onAdd: (String, String, Int, Long, Int, Long, Boolean) -> Unit,
     onDelete: (FocusTask) -> Unit,
     onEdit: (FocusTask) -> Unit,
     onComplete: (FocusTask) -> Unit
 ) {
     var title by remember { mutableStateOf("") }
+    var isPlan by remember { mutableStateOf(false) }
     var priority by remember { mutableStateOf("MEDIUM") }
     var reward by remember { mutableStateOf("20") }
     var deadlineMillis by remember { mutableStateOf(System.currentTimeMillis() + 24L * 60L * 60L * 1000L) }
@@ -745,11 +778,13 @@ private fun TaskScreen(
     editingTask?.let { task ->
         AlertDialog(
             onDismissRequest = { editingTask = null },
-            title = { Text("Edit task") },
+            title = { Text(if (task.isPlan) "Edit plan" else "Edit task") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(editTitle, { editTitle = it.take(TaskRules.MAX_TITLE_LENGTH) }, label = { Text("Title") }, singleLine = true)
-                    OutlinedTextField(editReward, { editReward = it.filter(Char::isDigit).take(4) }, label = { Text("Reward minutes") }, singleLine = true)
+                    if (!task.isPlan) {
+                        OutlinedTextField(editReward, { editReward = it.filter(Char::isDigit).take(4) }, label = { Text("Reward minutes") }, singleLine = true)
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf("HIGH", "MEDIUM", "LOW").forEach { value ->
                             FilterChip(editPriority == value, { editPriority = value }, label = { Text(value) })
@@ -776,14 +811,28 @@ private fun TaskScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    if (editTitle.isNotBlank()) {
-                        val reward = (editReward.toIntOrNull() ?: task.rewardMinutes).coerceIn(0, TaskRules.MAX_TASK_MINUTES)
-                        onEdit(task.copy(title = editTitle.trim(), priority = editPriority, rewardMinutes = reward, deadlineMillis = editDeadlineMillis))
+                    when {
+                        editTitle.isBlank() -> Toast.makeText(context, "Give it a title", Toast.LENGTH_SHORT).show()
+                        // Moving a deadline into the past would fire its penalty alarm at once.
+                        editDeadlineMillis != task.deadlineMillis && editDeadlineMillis <= System.currentTimeMillis() ->
+                            Toast.makeText(context, "Pick a time in the future", Toast.LENGTH_SHORT).show()
+                        else -> {
+                            val reward = if (task.isPlan) 0 else (editReward.toIntOrNull() ?: task.rewardMinutes).coerceIn(0, TaskRules.MAX_TASK_MINUTES)
+                            onEdit(task.copy(title = editTitle.trim(), priority = editPriority, rewardMinutes = reward, deadlineMillis = editDeadlineMillis))
+                            editingTask = null
+                        }
                     }
-                    editingTask = null
                 }) { Text("Save") }
             },
-            dismissButton = { TextButton(onClick = { editingTask = null }) { Text("Cancel") } }
+            dismissButton = {
+                Row {
+                    // Plans carry no penalty, so they can be removed while still open.
+                    if (task.isPlan) {
+                        TextButton(onClick = { onDelete(task); editingTask = null }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                    }
+                    TextButton(onClick = { editingTask = null }) { Text("Cancel") }
+                }
+            }
         )
     }
     var reminderMillis by remember { mutableStateOf(System.currentTimeMillis() + 23L * 60L * 60L * 1000L) }
@@ -813,6 +862,19 @@ private fun TaskScreen(
             )
         }
         item {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = !isPlan, onClick = { isPlan = false }, label = { Text("Commitment") })
+                    FilterChip(selected = isPlan, onClick = { isPlan = true }, label = { Text("Plan") })
+                }
+                Text(
+                    if (isPlan) "Plans are for scheduling: a reminder only, no reward or penalty, and they never keep your apps locked."
+                    else "Commitments earn minutes when done on time and trigger a penalty if missed.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+        item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("HIGH", "MEDIUM", "LOW").forEach { value ->
                     FilterChip(selected = priority == value, onClick = {
@@ -822,12 +884,14 @@ private fun TaskScreen(
                 }
             }
         }
-        item {
-            OutlinedTextField(reward, { reward = it.filter(Char::isDigit).take(4) }, label = { Text("Reward minutes") }, singleLine = true)
-        }
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(penaltyMinutes, { penaltyMinutes = it.filter(Char::isDigit).take(4) }, Modifier.weight(1f), label = { Text("Penalty minutes") }, singleLine = true)
+        if (!isPlan) {
+            item {
+                OutlinedTextField(reward, { reward = it.filter(Char::isDigit).take(4) }, label = { Text("Reward minutes") }, singleLine = true)
+            }
+            item {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(penaltyMinutes, { penaltyMinutes = it.filter(Char::isDigit).take(4) }, Modifier.weight(1f), label = { Text("Penalty minutes") }, singleLine = true)
+                }
             }
         }
         item {
@@ -846,7 +910,7 @@ private fun TaskScreen(
                         calendar.set(Calendar.MINUTE, minute)
                         updateDeadline(calendar.timeInMillis)
                     }, calendar.get(Calendar.HOUR_OF_DAY), calendar.get(Calendar.MINUTE), false).show()
-                }, modifier = Modifier.weight(1f)) { Text("Due: ${timeFormat.format(deadlineMillis)}") }
+                }, modifier = Modifier.weight(1f)) { Text("${if (isPlan) "At" else "Due"}: ${timeFormat.format(deadlineMillis)}") }
             }
         }
         item {
@@ -874,7 +938,7 @@ private fun TaskScreen(
                 when {
                     title.isBlank() -> Toast.makeText(context, "Give the task a title", Toast.LENGTH_SHORT).show()
                     // A past deadline would fire its penalty alarm immediately.
-                    deadlineMillis <= now -> Toast.makeText(context, "Pick a deadline in the future", Toast.LENGTH_SHORT).show()
+                    deadlineMillis <= now -> Toast.makeText(context, "Pick a time in the future", Toast.LENGTH_SHORT).show()
                     reminderMillis >= deadlineMillis -> Toast.makeText(context, "The reminder must be before the deadline", Toast.LENGTH_SHORT).show()
                     else -> {
                         onAdd(
@@ -883,12 +947,13 @@ private fun TaskScreen(
                             (reward.toIntOrNull() ?: TaskRules.defaultReward(priority)).coerceIn(0, TaskRules.MAX_TASK_MINUTES),
                             deadlineMillis,
                             (penaltyMinutes.toIntOrNull() ?: 60).coerceIn(0, TaskRules.MAX_TASK_MINUTES),
-                            reminderMillis
+                            reminderMillis,
+                            isPlan
                         )
                         title = ""
                     }
                 }
-            }, modifier = Modifier.fillMaxWidth()) { Text("Add priority task") }
+            }, modifier = Modifier.fillMaxWidth()) { Text(if (isPlan) "Add plan" else "Add priority task") }
             HorizontalDivider(Modifier.padding(top = 4.dp, bottom = 8.dp))
         }
         if (activeTasks.isNotEmpty()) {
@@ -906,7 +971,11 @@ private fun TaskScreen(
                 Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                     Column(Modifier.weight(1f)) {
                         Text(task.title, style = MaterialTheme.typography.titleMedium)
-                        Text("${task.priority} • +${task.rewardMinutes} min • due ${dateFormat.format(task.deadlineMillis)} ${timeFormat.format(task.deadlineMillis)}")
+                        val whenText = "${dateFormat.format(task.deadlineMillis)} ${timeFormat.format(task.deadlineMillis)}"
+                        Text(
+                            if (task.isPlan) "PLAN • ${task.priority} • $whenText"
+                            else "${task.priority} • +${task.rewardMinutes} min • due $whenText"
+                        )
                         if (sortMode == TaskRules.Sort.EISENHOWER) {
                             Text(TaskRules.quadrant(task, System.currentTimeMillis()).label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary)
                         }
@@ -919,7 +988,7 @@ private fun TaskScreen(
                             editPriority = task.priority
                             editDeadlineMillis = task.deadlineMillis.takeIf { it > 0L } ?: System.currentTimeMillis()
                         }) { Text("Edit") }
-                        Button(onClick = { onComplete(task) }) { Text("Complete") }
+                        Button(onClick = { onComplete(task) }) { Text(if (task.isPlan) "Done" else "Complete") }
                     }
                 }
             }
@@ -933,7 +1002,11 @@ private fun TaskScreen(
                     Column(Modifier.weight(1f)) {
                         Text(task.title, style = MaterialTheme.typography.titleMedium)
                         val late = TaskRules.isLate(task)
-                        Text(if (late) "${task.priority} • completed late, no reward" else "${task.priority} • +${task.rewardMinutes} min earned")
+                        Text(when {
+                            task.isPlan -> "Plan • done"
+                            late -> "${task.priority} • completed late, no reward"
+                            else -> "${task.priority} • +${task.rewardMinutes} min earned"
+                        })
                     }
                     TextButton(onClick = { onDelete(task) }) { Text("Delete") }
                 }
@@ -969,7 +1042,7 @@ private fun ScheduleScreen(tasks: List<FocusTask>) {
     ) {
         item {
             Text("Next seven days", style = MaterialTheme.typography.titleLarge)
-            Text("Days are rows; due-time windows are columns.", style = MaterialTheme.typography.bodyMedium)
+            Text("Days are rows; due-time windows are columns. ◇ marks a plan.", style = MaterialTheme.typography.bodyMedium)
         }
         item {
             Card(Modifier.fillMaxWidth()) {
@@ -1008,7 +1081,7 @@ private fun ScheduleScreen(tasks: List<FocusTask>) {
                                     Column(Modifier.padding(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                         intervalTasks.forEach { task ->
                                             Text(
-                                                "${task.title}\n${timeFormat.format(Date(task.deadlineMillis))}",
+                                                "${if (task.isPlan) "◇ " else ""}${task.title}\n${timeFormat.format(Date(task.deadlineMillis))}",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 maxLines = 3,
                                                 color = if (task.completed) MaterialTheme.colorScheme.primary else priorityColor(task.priority)
@@ -1051,6 +1124,7 @@ private fun loadInstalledApps(context: Context): List<InstalledApp> {
 @Composable
 private fun AppsScreen(
     apps: List<InstalledApp>,
+    penalizedApps: Set<String>,
     blockedApps: List<String>,
     appCategories: Map<String, String>,
     appAllowances: Map<String, Int>,
@@ -1146,6 +1220,7 @@ private fun AppsScreen(
                     AppGridCard(
                         app = app,
                         selected = app.packageName in blockedApps,
+                        penalized = app.packageName in penalizedApps,
                         allowance = appAllowances[app.packageName],
                         category = appCategories[app.packageName] ?: appCategory(app),
                         onToggle = onToggle,
@@ -1173,6 +1248,7 @@ private fun appCategory(app: InstalledApp): String {
 private fun AppGridCard(
     app: InstalledApp,
     selected: Boolean,
+    penalized: Boolean,
     allowance: Int?,
     category: String,
     onToggle: (String, Boolean) -> Unit,
@@ -1197,14 +1273,14 @@ private fun AppGridCard(
             text = {
                 OutlinedTextField(
                     value = allowanceText,
-                    onValueChange = { allowanceText = it.filter(Char::isDigit) },
+                    onValueChange = { allowanceText = it.filter(Char::isDigit).take(4) },
                     label = { Text("Minutes for this app") },
                     singleLine = true
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
-                    allowanceText.toIntOrNull()?.takeIf { it > 0 }?.let { onSetAllowance(app.packageName, it) }
+                    allowanceText.toIntOrNull()?.takeIf { it > 0 }?.let { onSetAllowance(app.packageName, it.coerceAtMost(TaskRules.MAX_TASK_MINUTES)) }
                     showAllowanceDialog = false
                 }) { Text("Save") }
             },
@@ -1238,7 +1314,11 @@ private fun AppGridCard(
             TextButton(onClick = { showCategoryDialog = true }) { Text("Category: $category") }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 TextButton(onClick = { showAllowanceDialog = true }) { Text("Set time") }
-                Switch(checked = selected, onCheckedChange = { onToggle(app.packageName, it) })
+                // Switching protection off would silently freeze an active penalty, so it stays on until served.
+                Switch(checked = selected, enabled = !(selected && penalized), onCheckedChange = { onToggle(app.packageName, it) })
+            }
+            if (selected && penalized) {
+                Text("Locked by a penalty: protection stays on until it is served.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
         }
     }

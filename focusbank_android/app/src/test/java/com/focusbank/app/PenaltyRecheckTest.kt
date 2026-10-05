@@ -69,6 +69,15 @@ class PenaltyRecheckTest {
         assertEquals(1, store.rerolls())
     }
 
+    @Test fun planNeverStartsAPenaltyChain() {
+        store.addBlockedApp("com.insta")
+        store.addTask(task("p", penalty = 15).copy(isPlan = true))
+        store.setPenalty("com.insta", 1, "p")
+        fx.prefs.edit().putLong("penalty_remaining_com.insta", 0L).commit()
+        TaskDeadlineReceiver.onPenaltyExpired(fx.context, store, "com.insta")
+        assertEquals(0L, store.penaltyRemainingSeconds("com.insta"))
+    }
+
     // --- Alarms (FR-1.1b, FR-6.4) ---
 
     @Test fun schedulingSetsDeadlineAndReminderAlarms() {
@@ -83,5 +92,12 @@ class PenaltyRecheckTest {
         val deadline = System.currentTimeMillis() + 3 * HOUR
         TaskDeadlineReceiver.schedule(fx.context, task("t", deadline = deadline).copy(reminderMillis = deadline + HOUR))
         assertEquals(setOf(deadline, deadline - HOUR), alarms.scheduledAlarms.map { it.triggerAtTime }.toSet())
+    }
+
+    @Test fun planSchedulesOnlyItsReminder() {
+        val alarms = shadowOf(fx.context.getSystemService(Context.ALARM_SERVICE) as AlarmManager)
+        val at = System.currentTimeMillis() + 3 * HOUR
+        TaskDeadlineReceiver.schedule(fx.context, task("p", deadline = at).copy(reminderMillis = at - 2 * HOUR, isPlan = true))
+        assertEquals(listOf(at - 2 * HOUR), alarms.scheduledAlarms.map { it.triggerAtTime })
     }
 }
