@@ -4,12 +4,14 @@
 ---
 
 ### Document Control
-- **Document Version:** 1.6.0
+- **Document Version:** 1.7.0
 - **Author:** System Architecture & Product Engineering
 - **Status:** Release Candidate / Implementation Baseline
 - **Target OS:** Android (Minimum SDK: API 26 / Android 8.0 Oreo; Target/Compile SDK: API 36 / Android 16)
 
 ### Document Update Summary
+
+Version 1.7.0 changes per-app time limits (FR-4.6). A limit now caps an app's daily use *on top of* the Vault rather than replacing it, applies even on unlock days, and has clearer wording in the Apps screen. The ongoing notification now also refreshes when time reaches zero, so it says "limit reached" or "exhausted" instead of "59 sec remaining".
 
 Version 1.6.0 adds **plans**: schedule-only tasks with a reminder but no reward, penalty or reroll, which never hold back the daily unlock (FR-1.5). Under FR-3.8, only commitments due today or overdue now count. The task table gains an `isPlan` column (Room v1 → v2 migration). Review fixes:
 - An edited deadline can no longer be moved into the past, which used to fire its penalty at once.
@@ -183,7 +185,7 @@ FocusBank requires high-privilege Android permissions to enforce distraction blo
 - **FR-4.3:** Apps shall be grouped into Social, Streaming, Games, and Other subtabs.
 - **FR-4.4:** Each category shall provide a searchable multi-select `Add apps` flow with app icons.
 - **FR-4.5:** Users shall be able to assign an app manually to a category; manual assignment overrides automatic keyword categorization.
-- **FR-4.6:** Users may give a protected app its own daily minute allowance, which refills each calendar day. While an app has its own allowance, using it draws from that allowance instead of the general Vault balance.
+- **FR-4.6 (Per-app time limit):** Users may set a daily time limit (minutes per day) on a protected app. It refills each calendar day. The limit is a *cap on top of* the Vault, not a separate bucket: every second in the app costs one Vault second and one limit second. The app is blocked when either runs out, so the limit still applies on a daily-unlock day (FR-3.8). The block screen says "Daily Limit Reached" when the limit is the reason. *Changed in 1.7.0; before that, a limit was a separate bucket that did not use the Vault.*
 
 ### 4.5 Module 5: Schedule and Dashboard
 - **FR-5.1:** *Removed in 1.5.0.* The verse card was dropped because the translations it quoted are copyrighted.
@@ -298,7 +300,7 @@ CREATE TABLE usage_records (
 3. **Hardware Battery Testing:** Run benchmark on physical device for 24-hour cycle with 20+ app swaps to verify minimal power drain.
 
 ### 8.3 Current Release Candidate
-- **Version:** 1.6.0 (versionCode 8), targetSdk 36
+- **Version:** 1.7.0 (versionCode 10), targetSdk 36
 - **Debug APK:** `app/build/outputs/apk/debug/app-debug.apk`
 - **Unsigned Release APK:** `app/build/outputs/apk/release/app-release-unsigned.apk`
 - **Unsigned Release App Bundle:** `app/build/outputs/bundle/release/app-release.aab`

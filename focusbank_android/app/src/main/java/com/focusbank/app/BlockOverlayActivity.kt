@@ -62,6 +62,7 @@ class BlockOverlayActivity : ComponentActivity() {
                 var remaining by remember { mutableLongStateOf(initialPenalty) }
                 var balance by remember { mutableLongStateOf(store.balanceSeconds()) }
                 val label = remember { appLabel(this@BlockOverlayActivity, packageName) }
+                val limitReached = remember { !isPenalty && store.limitSecondsLeft(packageName) == 0L }
                 var tasks by remember { mutableStateOf<List<FocusTask>>(emptyList()) }
                 LaunchedEffect(Unit) { tasks = withContext(Dispatchers.IO) { store.tasks() } }
                 val penaltyTask = tasks.firstOrNull { it.id == store.penaltyTask(packageName) }
@@ -83,7 +84,14 @@ class BlockOverlayActivity : ComponentActivity() {
                 Column(Modifier.fillMaxSize().safeDrawingPadding().padding(28.dp), Arrangement.Center, Alignment.CenterHorizontally) {
                     Text("FocusBank boundary", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(12.dp))
-                    Text(if (isPenalty && initialPenalty > 0L) "Penalty Lockout" else "Allowance Exhausted", style = MaterialTheme.typography.headlineMedium)
+                    Text(
+                        when {
+                            isPenalty && initialPenalty > 0L -> "Penalty Lockout"
+                            limitReached -> "Daily Limit Reached"
+                            else -> "Allowance Exhausted"
+                        },
+                        style = MaterialTheme.typography.headlineMedium
+                    )
                     Text(label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(vertical = 10.dp))
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
                         Column(Modifier.padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -100,17 +108,18 @@ class BlockOverlayActivity : ComponentActivity() {
                                 Text("Return to FocusBank to check tasks", style = MaterialTheme.typography.bodyMedium)
                             } else {
                                 Text("00:00:00", style = MaterialTheme.typography.displaySmall)
-                                Text("Assigned free time consumed", style = MaterialTheme.typography.bodyMedium)
+                                Text(if (limitReached) "Today's time limit for this app is used up" else "Assigned free time consumed", style = MaterialTheme.typography.bodyMedium)
                             }
                         }
                     }
                     Text(
                         if (isPenalty) "This app is locked due to a missed deadline${penaltyTask?.let { ": ${it.title}" } ?: "."}"
+                        else if (limitReached) "It opens again tomorrow, when the limit refills."
                         else "Complete tasks in FocusBank to earn more free time.",
                         Modifier.padding(top = 18.dp, bottom = 8.dp),
                         style = MaterialTheme.typography.bodyMedium
                     )
-                    if (!isPenalty && spotlight != null) {
+                    if (!isPenalty && !limitReached && spotlight != null) {
                         Card(Modifier.padding(bottom = 18.dp)) {
                             Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("NEXT UP", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)

@@ -358,14 +358,22 @@ class FocusBankStore(
             .apply()
     }
 
-    fun consumeAppSecond(packageName: String): Boolean = synchronized(LOCK) {
+    /**
+     * One second against the app's own daily time limit (FR-4.6). The same second is also charged to
+     * the Vault by [chargeVaultSecond], which records the usage, so this does not record it again.
+     * Returns false when the app has no limit.
+     */
+    fun consumeLimitSecond(packageName: String): Boolean = synchronized(LOCK) {
         val seconds = preferences.getLong("app_allowance_seconds_$packageName", appAllowance(packageName)?.toLong()?.times(60L) ?: -1L)
         if (seconds < 0L) return false
         val remaining = (seconds - 1L).coerceAtLeast(0L)
         preferences.edit().putLong("app_allowance_seconds_$packageName", remaining).apply()
-        recordUsageSecond(packageName)
         true
     }
+
+    /** Seconds left today under the app's time limit, or null when it has no limit. */
+    fun limitSecondsLeft(packageName: String): Long? =
+        if (appAllowance(packageName) != null) appAllowanceSeconds(packageName).coerceAtLeast(0L) else null
 
     fun usageToday(): List<UsageSummary> = usageFor(dayKey(System.currentTimeMillis()))
 

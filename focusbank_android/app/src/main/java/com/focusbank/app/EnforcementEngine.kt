@@ -104,7 +104,7 @@ class EnforcementEngine(private val store: FocusBankStore, private val host: Enf
             block(packageName, isPenalty = true)
             return
         }
-        if (!hasAllowance(packageName) && !store.dailyUsageUnlocked()) {
+        if (!canUse(packageName)) {
             block(packageName, isPenalty = false)
             return
         }
@@ -114,9 +114,9 @@ class EnforcementEngine(private val store: FocusBankStore, private val host: Enf
         }
     }
 
-    private fun hasAllowance(packageName: String): Boolean =
-        if (store.appAllowance(packageName) != null) store.appAllowanceSeconds(packageName) > 0L
-        else store.balanceSeconds() > 0L
+    /** FR-4.6: Vault (or daily unlock) AND the app's own time limit, if it has one. */
+    private fun canUse(packageName: String): Boolean =
+        TaskRules.canUseApp(store.balanceSeconds(), store.limitSecondsLeft(packageName)) { store.dailyUsageUnlocked() }
 
     private fun chargeSecond(packageName: String) {
         if (packageName !in store.blockedApps()) {
@@ -129,16 +129,16 @@ class EnforcementEngine(private val store: FocusBankStore, private val host: Enf
             return
         }
 
-        val remaining = if (store.appAllowance(packageName) != null) {
-            store.consumeAppSecond(packageName)
-            store.appAllowanceSeconds(packageName)
-        } else {
-            store.chargeVaultSecond(packageName)
-            store.balanceSeconds()
-        }
+        // Every second of a protected app costs Vault time; an app with a time limit also uses up
+        // that limit (FR-4.6), and is blocked when either runs out.
+        store.chargeVaultSecond(packageName)
+        store.consumeLimitSecond(packageName)
 
-        showRemaining(packageName, remaining)
-        if (remaining <= 0L && !store.dailyUsageUnlocked()) block(packageName, isPenalty = false)
+        val vault = store.balanceSeconds()
+        val limitLeft = store.limitSecondsLeft(packageName)
+        val unlocked = vault <= 0L && store.dailyUsageUnlocked()
+        showRemaining(packageName, TaskRules.appSecondsLeft(vault, limitLeft, unlocked))
+        if (!TaskRules.canUseApp(vault, limitLeft) { unlocked }) block(packageName, isPenalty = false)
     }
 
     private fun block(packageName: String, isPenalty: Boolean) {
@@ -157,7 +157,8 @@ class EnforcementEngine(private val store: FocusBankStore, private val host: Enf
     }
 
     private fun showRemaining(packageName: String, remaining: Long) {
-        val minutes = (remaining / 60L).toInt()
+        // Refresh once a minute, plus once more at zero: "59 sec left" and "used up" share minute 0.
+        val minutes = if (remaining <= 0L) -2 else (remaining / 60L).toInt()
         if (minutes == shownMinutes) return
         shownMinutes = minutes
         host.showStatus(statusText(packageName, remaining))
@@ -168,6 +169,7 @@ class EnforcementEngine(private val store: FocusBankStore, private val host: Enf
         return when {
             remaining >= 60L -> "${remaining / 60L} min remaining while using $label"
             remaining > 0L -> "$remaining sec remaining while using $label"
+            store.limitSecondsLeft(packageName) == 0L -> "Daily time limit reached for $label"
             store.dailyUsageUnlocked() -> "Daily goal reached! Free time active on $label"
             else -> "Allowance exhausted for $label"
         }

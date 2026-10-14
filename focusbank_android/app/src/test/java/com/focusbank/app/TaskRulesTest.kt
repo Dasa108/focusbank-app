@@ -153,6 +153,32 @@ class TaskRulesTest {
         assertEquals(6, java.util.Calendar.getInstance().apply { timeInMillis = TaskRules.endOfDay(cal.timeInMillis) + 1 }.get(java.util.Calendar.DAY_OF_MONTH))
     }
 
+    // --- Per-app time limit is a cap on top of the Vault (FR-4.6) ---
+
+    @Test fun appWithoutALimitNeedsVaultTimeOrTheUnlock() {
+        assertTrue(TaskRules.canUseApp(10, null) { false })
+        assertFalse(TaskRules.canUseApp(0, null) { false })
+        assertTrue(TaskRules.canUseApp(0, null) { true })
+    }
+
+    @Test fun limitedAppNeedsBothItsLimitAndTheVault() {
+        assertTrue(TaskRules.canUseApp(10, 5) { false })
+        assertFalse("limit used up", TaskRules.canUseApp(1000, 0) { false })
+        assertFalse("vault empty", TaskRules.canUseApp(0, 600) { false })
+    }
+
+    @Test fun limitStillAppliesOnAnUnlockDay() {
+        assertTrue(TaskRules.canUseApp(0, 600) { true })
+        assertFalse(TaskRules.canUseApp(0, 0) { true })
+    }
+
+    @Test fun secondsLeftIsTheSmallerOfVaultAndLimit() {
+        assertEquals(100L, TaskRules.appSecondsLeft(100, null, unlocked = false))
+        assertEquals(40L, TaskRules.appSecondsLeft(100, 40, unlocked = false))
+        assertEquals(40L, TaskRules.appSecondsLeft(40, 100, unlocked = false))
+        assertEquals("unlock day: only the limit counts", 100L, TaskRules.appSecondsLeft(0, 100, unlocked = true))
+    }
+
     // --- Sorting (FR-1.2) ---
 
     @Test fun eisenhowerQuadrants() {

@@ -141,12 +141,14 @@ class FocusBankStoreTest {
         assertTrue(store.activePenalties().isEmpty())
     }
 
-    @Test fun appAllowanceUsesItsOwnBucket() {
+    @Test fun timeLimitCountsDownWithoutDoubleCountingUsage() {
         store.addBlockedApp("com.game")
         store.setAppAllowance("com.game", 1)
-        repeat(3) { store.consumeAppSecond("com.game") }
-        assertEquals(57L, store.appAllowanceSeconds("com.game"))
-        assertEquals(30 * 60L, store.balanceSeconds())
+        repeat(3) { store.chargeVaultSecond("com.game"); store.consumeLimitSecond("com.game") }
+        assertEquals(57L, store.limitSecondsLeft("com.game"))
+        assertEquals(30 * 60L - 3, store.balanceSeconds())
+        assertEquals(3L, store.usageToday().single { it.packageName == "com.game" }.seconds)
+        assertEquals(null, store.limitSecondsLeft("com.other"))
     }
 
     @Test fun reduceAllowanceNeverGoesNegative() {

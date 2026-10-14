@@ -292,4 +292,52 @@ class EnforcementEngineTest {
         open(INSTA)
         assertTrue("Instagram is free again once the penalty is served", phone.blocks.isEmpty())
     }
+
+    // --- Per-app time limit: a cap on top of the Vault (FR-4.6) ---
+
+    @Test fun limitedAppUsesBothVaultAndItsLimit() {
+        fx.setBalance(100)
+        store.setAppAllowance(CHROME, 1)
+        open(CHROME); seconds(10)
+        assertEquals(90L, store.balanceSeconds())
+        assertEquals(50L, store.limitSecondsLeft(CHROME))
+        assertEquals("usage counted once", 10L, usage(CHROME))
+    }
+
+    @Test fun reachingTheLimitBlocksEvenWithVaultTimeLeft() {
+        fx.setBalance(1_000)
+        store.setAppAllowance(CHROME, 1)
+        open(CHROME); seconds(60)
+        assertEquals(listOf(Triple(CHROME, false, 0L)), phone.blocks)
+        assertEquals(940L, store.balanceSeconds())
+        assertTrue(phone.statuses.last().startsWith("Daily time limit reached"))
+    }
+
+    @Test fun emptyVaultBlocksALimitedAppToo() {
+        fx.setBalance(0)
+        store.setAppAllowance(CHROME, 30)
+        open(CHROME)
+        assertEquals(1, phone.blocks.size)
+    }
+
+    @Test fun limitStillAppliesOnAnUnlockDay() {
+        store.addTask(task("a")); store.completeTask("a")
+        fx.setBalance(0)
+        store.setAppAllowance(CHROME, 1)
+        open(CHROME); seconds(30)
+        assertTrue("free to open on an unlock day", phone.blocks.isEmpty())
+        seconds(30)
+        assertEquals(1, phone.blocks.size)
+        phone.clock += EnforcementEngine.BLOCK_DEBOUNCE_MS
+        open(CHROME)
+        assertEquals("used-up limit blocks on entry", 2, phone.blocks.size)
+    }
+
+    @Test fun limitedAppStillServesPenaltiesElsewhereWhileVaultHasTime() {
+        fx.setBalance(100)
+        store.setAppAllowance(CHROME, 5)
+        store.setPenalty(INSTA, 1, "t")
+        open(CHROME); seconds(10)
+        assertEquals(50L, store.penaltyRemainingSeconds(INSTA))
+    }
 }

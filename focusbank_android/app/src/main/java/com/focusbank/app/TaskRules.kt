@@ -69,6 +69,24 @@ object TaskRules {
         return !dueOpen && finishedToday && awayGoalMet(awayGoalMinutes, awaySecondsToday)
     }
 
+    /**
+     * FR-4.6: a protected app's daily time limit is a cap on top of the Vault, not a separate bucket.
+     * The app may run only while its limit (if any) has time left AND either the Vault has time or
+     * the daily unlock is on. The limit holds even on an unlock day. [unlocked] is only evaluated
+     * when it matters (it reads the task list).
+     */
+    fun canUseApp(vaultSeconds: Long, limitSecondsLeft: Long?, unlocked: () -> Boolean): Boolean {
+        if (limitSecondsLeft != null && limitSecondsLeft <= 0L) return false
+        return vaultSeconds > 0L || unlocked()
+    }
+
+    /** Seconds the user can still spend in the app right now, for the status line. */
+    fun appSecondsLeft(vaultSeconds: Long, limitSecondsLeft: Long?, unlocked: Boolean): Long = when {
+        limitSecondsLeft == null -> vaultSeconds
+        vaultSeconds <= 0L && unlocked -> limitSecondsLeft
+        else -> minOf(vaultSeconds, limitSecondsLeft)
+    }
+
     fun awayGoalMet(goalMinutes: Int, awaySecondsToday: Long): Boolean =
         goalMinutes <= 0 || awaySecondsToday >= goalMinutes * 60L
 

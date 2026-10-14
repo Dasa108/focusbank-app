@@ -1273,8 +1273,9 @@ private fun AppGridCard(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "Give ${app.label} its own minutes each day. Using it counts down this limit instead of your " +
-                            "Vault, it refills at midnight, and ${app.label} is blocked when it runs out. " +
+                        "Caps how long you can use ${app.label} each day. Time in ${app.label} still comes out of " +
+                            "your Vault; when either the limit or your Vault runs out, ${app.label} is blocked. " +
+                            "The limit refills at midnight and holds even on days you've finished all your tasks. " +
                             "Applies only while ${app.label} is protected."
                     )
                     OutlinedTextField(
@@ -1318,7 +1319,7 @@ private fun AppGridCard(
             }
             Text(app.label, style = MaterialTheme.typography.titleMedium, maxLines = 1)
             Text(
-                if (allowance != null) "Time limit: $allowance min a day (doesn't use your Vault)" else "No time limit: uses your Vault time",
+                if (allowance != null) "Time limit: $allowance min a day, plus Vault time" else "No time limit: uses Vault time only",
                 style = MaterialTheme.typography.bodySmall
             )
             TextButton(onClick = { showCategoryDialog = true }) { Text("Category: $category") }
