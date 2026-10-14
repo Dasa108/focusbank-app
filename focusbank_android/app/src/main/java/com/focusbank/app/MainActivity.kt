@@ -1269,14 +1269,21 @@ private fun AppGridCard(
     if (showAllowanceDialog) {
         AlertDialog(
             onDismissRequest = { showAllowanceDialog = false },
-            title = { Text("Special time for ${app.label}") },
+            title = { Text("Daily time limit for ${app.label}") },
             text = {
-                OutlinedTextField(
-                    value = allowanceText,
-                    onValueChange = { allowanceText = it.filter(Char::isDigit).take(4) },
-                    label = { Text("Minutes for this app") },
-                    singleLine = true
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Give ${app.label} its own minutes each day. Using it counts down this limit instead of your " +
+                            "Vault, it refills at midnight, and ${app.label} is blocked when it runs out. " +
+                            "Applies only while ${app.label} is protected."
+                    )
+                    OutlinedTextField(
+                        value = allowanceText,
+                        onValueChange = { allowanceText = it.filter(Char::isDigit).take(4) },
+                        label = { Text("Minutes per day") },
+                        singleLine = true
+                    )
+                }
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -1290,7 +1297,7 @@ private fun AppGridCard(
                         TextButton(onClick = {
                             onRemoveAllowance(app.packageName)
                             showAllowanceDialog = false
-                        }) { Text("Revert to Vault", color = MaterialTheme.colorScheme.error) }
+                        }) { Text("Remove limit", color = MaterialTheme.colorScheme.error) }
                     }
                     TextButton(onClick = { showAllowanceDialog = false }) { Text("Cancel") }
                 }
@@ -1310,10 +1317,13 @@ private fun AppGridCard(
                 Image(icon, contentDescription = null, modifier = Modifier.padding(bottom = 4.dp))
             }
             Text(app.label, style = MaterialTheme.typography.titleMedium, maxLines = 1)
-            Text(if (allowance != null) "$allowance min special" else "General allowance", style = MaterialTheme.typography.bodySmall)
+            Text(
+                if (allowance != null) "Time limit: $allowance min a day (doesn't use your Vault)" else "No time limit: uses your Vault time",
+                style = MaterialTheme.typography.bodySmall
+            )
             TextButton(onClick = { showCategoryDialog = true }) { Text("Category: $category") }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                TextButton(onClick = { showAllowanceDialog = true }) { Text("Set time") }
+                TextButton(onClick = { showAllowanceDialog = true }) { Text(if (allowance != null) "Change time limit" else "Set time limit") }
                 // Switching protection off would silently freeze an active penalty, so it stays on until served.
                 Switch(checked = selected, enabled = !(selected && penalized), onCheckedChange = { onToggle(app.packageName, it) })
             }
